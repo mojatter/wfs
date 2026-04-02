@@ -10,7 +10,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/jarxorg/wfs"
+	"github.com/mojatter/wfs"
 )
 
 // MemFS represents an in-memory filesystem.

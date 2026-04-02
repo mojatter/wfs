@@ -1,7 +1,7 @@
 # wfs
 
-[![PkgGoDev](https://pkg.go.dev/badge/github.com/jarxorg/wfs)](https://pkg.go.dev/github.com/jarxorg/wfs)
-[![Report Card](https://goreportcard.com/badge/github.com/jarxorg/wfs)](https://goreportcard.com/report/github.com/jarxorg/wfs)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/mojatter/wfs)](https://pkg.go.dev/github.com/mojatter/wfs)
+[![Report Card](https://goreportcard.com/badge/github.com/mojatter/wfs)](https://goreportcard.com/report/github.com/mojatter/wfs)
 
 Package wfs provides writable [io/fs](https://pkg.go.dev/io/fs).FS interfaces.
 
@@ -34,10 +34,10 @@ This is one of the solutions to an [issue](https://github.com/golang/go/issues/4
 
 The following packages are an implementation of wfs.
 
-- [osfs](https://pkg.go.dev/github.com/jarxorg/wfs/osfs)
-- [memfs](https://pkg.go.dev/github.com/jarxorg/wfs/memfs)
-- [s3fs](https://github.com/jarxorg/s3fs)
-- [gcsfs](https://github.com/jarxorg/gcsfs)
+- [osfs](https://pkg.go.dev/github.com/mojatter/wfs/osfs)
+- [memfs](https://pkg.go.dev/github.com/mojatter/wfs/memfs)
+- [s3fs](https://github.com/mojatter/s3fs)
+- [gcsfs](https://github.com/mojatter/gcsfs)
 
 ## CopyFS
 
@@ -50,9 +50,9 @@ package main
 import (
 	"log"
 
-	"github.com/jarxorg/s3fs"
-	"github.com/jarxorg/wfs"
-	"github.com/jarxorg/wfs/osfs"
+	"github.com/mojatter/s3fs"
+	"github.com/mojatter/wfs"
+	"github.com/mojatter/wfs/osfs"
 )
 
 func main() {

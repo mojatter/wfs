@@ -3,15 +3,14 @@ package osfs
 import (
 	"errors"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"testing/fstest"
 
-	"github.com/jarxorg/wfs"
-	"github.com/jarxorg/wfs/wfstest"
+	"github.com/mojatter/wfs"
+	"github.com/mojatter/wfs/wfstest"
 )
 
 func TestFS(t *testing.T) {
@@ -22,7 +21,7 @@ func TestFS(t *testing.T) {
 }
 
 func TestWriteFileFS(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "test")
+	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +34,7 @@ func TestWriteFileFS(t *testing.T) {
 }
 
 func TestMkdirAll(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "test")
+	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +53,7 @@ func TestMkdirAll(t *testing.T) {
 }
 
 func TestCreateFile(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "test")
+	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +68,7 @@ func TestCreateFile(t *testing.T) {
 }
 
 func TestCreateFile_MkdirAllError(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "test")
+	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +92,7 @@ func TestCreateFile_MkdirAllError(t *testing.T) {
 }
 
 func TestWriteFile(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "test")
+	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +110,7 @@ func TestWriteFile(t *testing.T) {
 		t.Errorf("unexpected %d; want %d", n, len(want))
 	}
 
-	got, err := ioutil.ReadFile(tmpDir + "/" + name)
+	got, err := os.ReadFile(tmpDir + "/" + name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +120,7 @@ func TestWriteFile(t *testing.T) {
 }
 
 func TestWriteFile_InvalidError(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "test")
+	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +165,7 @@ func TestContainsDenyWin(t *testing.T) {
 }
 
 func TestSub_WriteFile(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "test")
+	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +187,7 @@ func TestSub_WriteFile(t *testing.T) {
 		t.Errorf("unexpected %d; want %d", n, len(want))
 	}
 
-	got, err := ioutil.ReadFile(tmpDir + "/" + dir + "/" + name)
+	got, err := os.ReadFile(tmpDir + "/" + dir + "/" + name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +197,7 @@ func TestSub_WriteFile(t *testing.T) {
 }
 
 func TestRemoveFile(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "test")
+	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +206,7 @@ func TestRemoveFile(t *testing.T) {
 	fsys := DirFS(tmpDir)
 	name := "test.txt"
 
-	if err = ioutil.WriteFile(tmpDir+"/"+name, []byte{}, fs.ModePerm); err != nil {
+	if err = os.WriteFile(tmpDir+"/"+name, []byte{}, fs.ModePerm); err != nil {
 		t.Fatal(err)
 	}
 
@@ -218,7 +217,7 @@ func TestRemoveFile(t *testing.T) {
 }
 
 func TestRemoveFile_InvalidError(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "test")
+	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +231,7 @@ func TestRemoveFile_InvalidError(t *testing.T) {
 }
 
 func TestRemoveAll(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "test")
+	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +244,7 @@ func TestRemoveAll(t *testing.T) {
 	if err = os.Mkdir(tmpDir+"/"+path, fs.ModePerm); err != nil {
 		t.Fatal(err)
 	}
-	if err = ioutil.WriteFile(tmpDir+"/"+path+"/"+name, []byte{}, fs.ModePerm); err != nil {
+	if err = os.WriteFile(tmpDir+"/"+path+"/"+name, []byte{}, fs.ModePerm); err != nil {
 		t.Fatal(err)
 	}
 
@@ -256,7 +255,7 @@ func TestRemoveAll(t *testing.T) {
 }
 
 func TestRemoveAll_InvalidError(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "test")
+	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
 		t.Fatal(err)
 	}

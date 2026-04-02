@@ -1,3 +1,3 @@
-module github.com/jarxorg/wfs
+module github.com/mojatter/wfs
 
-go 1.16
+go 1.26

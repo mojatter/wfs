@@ -3,16 +3,15 @@ package osfs_test
 import (
 	"fmt"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"os"
 
-	"github.com/jarxorg/wfs"
-	"github.com/jarxorg/wfs/osfs"
+	"github.com/mojatter/wfs"
+	"github.com/mojatter/wfs/osfs"
 )
 
 func ExampleDirFS() {
-	tmpDir, err := ioutil.TempDir("", "example")
+	tmpDir, err := os.MkdirTemp("", "example")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -27,7 +26,7 @@ func ExampleDirFS() {
 		log.Fatal(err)
 	}
 
-	wrote, err := ioutil.ReadFile(tmpDir + "/" + name)
+	wrote, err := os.ReadFile(tmpDir + "/" + name)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/jarxorg/wfs"
+	"github.com/mojatter/wfs"
 )
 
 // DirFS returns a filesystem for the tree of files rooted at the directory dir.

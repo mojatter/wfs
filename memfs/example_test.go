@@ -5,8 +5,8 @@ import (
 	"io/fs"
 	"log"
 
-	"github.com/jarxorg/wfs"
-	"github.com/jarxorg/wfs/memfs"
+	"github.com/mojatter/wfs"
+	"github.com/mojatter/wfs/memfs"
 )
 
 func ExampleNew() {

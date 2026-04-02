@@ -3,7 +3,6 @@ package wfs
 import (
 	"errors"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -206,7 +205,7 @@ func TestRemoveAll_ErrNotImplemented(t *testing.T) {
 }
 
 func TestCopyFS(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "test")
+	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
 		t.Fatal(err)
 	}

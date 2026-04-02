@@ -10,8 +10,8 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/jarxorg/wfs"
-	"github.com/jarxorg/wfs/wfstest"
+	"github.com/mojatter/wfs"
+	"github.com/mojatter/wfs/wfstest"
 )
 
 func newMemFSTest(t *testing.T) *MemFS {

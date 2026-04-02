@@ -7,23 +7,23 @@ import (
 	"strings"
 	"testing/iotest"
 
-	"github.com/jarxorg/wfs"
+	"github.com/mojatter/wfs"
 )
 
 // TestWriteFileFS tests a wfs.WriteFileFS implementation.
 //
 // Typical usage inside a test is:
 //
-//  tmpDir, err := ioutil.TempDir("", "test")
-//  if err != nil {
-//    t.Fatal(err)
-//  }
-//  defer os.RemoveAll(tmpDir)
+//	tmpDir, err := os.MkdirTemp("", "test")
+//	if err != nil {
+//	  t.Fatal(err)
+//	}
+//	defer os.RemoveAll(tmpDir)
 //
-//  fsys := osfs.New(filepath.Dir(tmpDir))
-//  if err := wfstest.TestWriteFileFS(fsys, filepath.Base(tmpDir)); err != nil {
-//    t.Fatal(err)
-//  }
+//	fsys := osfs.New(filepath.Dir(tmpDir))
+//	if err := wfstest.TestWriteFileFS(fsys, filepath.Base(tmpDir)); err != nil {
+//	  t.Fatal(err)
+//	}
 func TestWriteFileFS(fsys fs.FS, tmpDir string) error {
 	tests := []struct {
 		name    string
