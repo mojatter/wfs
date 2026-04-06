@@ -52,6 +52,38 @@ func TestRenameFS(t *testing.T) {
 	}
 }
 
+func TestSubSharesMutex(t *testing.T) {
+	fsys := New()
+	if err := fsys.MkdirAll("sub", fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	subFS, err := fsys.Sub("sub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub, ok := subFS.(*MemFS)
+	if !ok {
+		t.Fatalf("Sub returned %T; want *MemFS", subFS)
+	}
+	if sub.mutex != fsys.mutex {
+		t.Errorf("Sub MemFS does not share mutex with parent")
+	}
+
+	// Smoke test concurrent access through parent and sub. With a shared
+	// mutex this is race-free; -race will catch a regression.
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 100; i++ {
+			_, _ = wfs.WriteFile(fsys, "sub/a.txt", []byte("a"), fs.ModePerm)
+		}
+		close(done)
+	}()
+	for i := 0; i < 100; i++ {
+		_, _ = wfs.WriteFile(sub, "b.txt", []byte("b"), fs.ModePerm)
+	}
+	<-done
+}
+
 func TestMemFile_Sync(t *testing.T) {
 	fsys := New()
 	f, err := fsys.CreateFile("sync.txt", fs.ModePerm)
