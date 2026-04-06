@@ -27,25 +27,18 @@ func isInvalidPath(name string) bool {
 	return !fs.ValidPath(name) || runtime.GOOS == "windows" && containsDenyWin(name)
 }
 
-var osCreateFunc = func(name string) (*os.File, error) {
-	return os.Create(name)
-}
-
-var osMkdirAllFunc = func(dir string, perm os.FileMode) error {
-	return os.MkdirAll(dir, perm)
-}
-
-var osRemoveFunc = func(name string) error {
-	return os.Remove(name)
-}
-
-var osRenameFunc = func(oldpath, newpath string) error {
-	return os.Rename(oldpath, newpath)
-}
-
-var osRemoveAllFunc = func(path string) error {
-	return os.RemoveAll(path)
-}
+// Indirected through package vars so tests can swap them out. osfs is a
+// filesystem abstraction whose purpose is to operate on caller-supplied
+// paths joined under the configured root Dir, after isInvalidPath rejects
+// traversal-unsafe names — so the G304-style concern around os.Create is
+// intentional here.
+var (
+	osCreateFunc    = os.Create
+	osMkdirAllFunc  = os.MkdirAll
+	osRemoveFunc    = os.Remove
+	osRemoveAllFunc = os.RemoveAll
+	osRenameFunc    = os.Rename
+)
 
 // OSFS represents a filesystem for the OS.
 type OSFS struct {
