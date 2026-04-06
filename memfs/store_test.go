@@ -1,7 +1,9 @@
 package memfs
 
 import (
+	"fmt"
 	"io/fs"
+	"math/rand"
 	"reflect"
 	"sort"
 	"strings"
@@ -115,6 +117,26 @@ func TestStore_remove(t *testing.T) {
 	v = s.remove(key)
 	if v != nil {
 		t.Errorf(`Error found %s: %v`, key, v)
+	}
+}
+
+func BenchmarkStore_put(b *testing.B) {
+	// Pre-generate keys in a randomized order so that put hits the
+	// realistic insertion-into-sorted-slice path rather than always
+	// appending at the end.
+	const n = 5000
+	rng := rand.New(rand.NewSource(1))
+	keys := make([]string, n)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("/dir%05d/file%05d.txt", rng.Intn(n), i)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s := newStore()
+		for _, k := range keys {
+			s.put(k, &value{name: k, mode: fs.ModePerm})
+		}
 	}
 }
 

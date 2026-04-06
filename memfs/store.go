@@ -78,8 +78,13 @@ func (s *store) get(k string) *value {
 
 func (s *store) put(k string, v *value) *value {
 	if _, ok := s.values[k]; !ok {
-		s.keys = append(s.keys, k)
-		sort.Strings(s.keys)
+		// Insert k into s.keys at the position that keeps the slice
+		// sorted. This is O(n) for the shift, vs. O(n log n) for a
+		// full sort.Strings on every put.
+		i := sort.SearchStrings(s.keys, k)
+		s.keys = append(s.keys, "")
+		copy(s.keys[i+1:], s.keys[i:])
+		s.keys[i] = k
 	}
 
 	s.values[k] = v
@@ -103,17 +108,17 @@ func (s *store) removeAll(prefix string) {
 		return
 	}
 
-	max := len(s.keys)
-	to := -1
-	for i := from; i < max; i++ {
-		key := s.keys[i]
-		if !strings.HasPrefix(key, prefix) {
-			break
-		}
+	// Find the first key after `from` that does not start with prefix.
+	// Because s.keys is sorted, the prefix-matching range is contiguous,
+	// so we can binary-search for its end instead of scanning.
+	end := sort.Search(len(s.keys)-from, func(i int) bool {
+		return !strings.HasPrefix(s.keys[from+i], prefix)
+	}) + from
+
+	for _, key := range s.keys[from:end] {
 		delete(s.values, key)
-		to = i
 	}
-	s.keys = append(s.keys[0:from], s.keys[to+1:]...)
+	s.keys = append(s.keys[:from], s.keys[end:]...)
 }
 
 func (s *store) keyIndex(key string) int {
