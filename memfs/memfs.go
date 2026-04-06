@@ -30,6 +30,7 @@ var (
 	_ fs.SubFS         = (*MemFS)(nil)
 	_ wfs.WriteFileFS  = (*MemFS)(nil)
 	_ wfs.RemoveFileFS = (*MemFS)(nil)
+	_ wfs.RenameFS     = (*MemFS)(nil)
 )
 
 // New returns a new MemFS.
@@ -246,6 +247,43 @@ func (fsys *MemFS) WriteFile(name string, p []byte, mode fs.FileMode) (int, erro
 	return copy(v.data, p), nil
 }
 
+// Rename renames oldpath to newpath. The move happens atomically under the
+// filesystem mutex. Rename currently supports files only; renaming a directory
+// returns a PathError. If newpath already exists as a file it is replaced.
+func (fsys *MemFS) Rename(oldpath, newpath string) error {
+	fsys.mutex.Lock()
+	defer fsys.mutex.Unlock()
+
+	if !fs.ValidPath(oldpath) {
+		return &fs.PathError{Op: "Rename", Path: oldpath, Err: fs.ErrInvalid}
+	}
+	if !fs.ValidPath(newpath) {
+		return &fs.PathError{Op: "Rename", Path: newpath, Err: fs.ErrInvalid}
+	}
+
+	oldKey := fsys.key(oldpath)
+	v := fsys.store.get(oldKey)
+	if v == nil {
+		return &fs.PathError{Op: "Rename", Path: oldpath, Err: fs.ErrNotExist}
+	}
+	if v.isDir {
+		return &fs.PathError{Op: "Rename", Path: oldpath, Err: fs.ErrInvalid}
+	}
+
+	if err := fsys.mkdirAll(path.Dir(newpath), v.mode); err != nil {
+		return err
+	}
+	newKey := fsys.key(newpath)
+	if existing := fsys.store.get(newKey); existing != nil && existing.isDir {
+		return &fs.PathError{Op: "Rename", Path: newpath, Err: fs.ErrInvalid}
+	}
+
+	fsys.store.remove(oldKey)
+	v.name = newKey
+	fsys.store.put(newKey, v)
+	return nil
+}
+
 // RemoveFile removes the specified named file.
 func (fsys *MemFS) RemoveFile(name string) error {
 	fsys.mutex.Lock()
@@ -286,9 +324,10 @@ type MemFile struct {
 }
 
 var (
-	_ fs.File        = (*MemFile)(nil)
-	_ fs.ReadDirFile = (*MemFile)(nil)
-	_ wfs.WriterFile = (*MemFile)(nil)
+	_ fs.File            = (*MemFile)(nil)
+	_ fs.ReadDirFile     = (*MemFile)(nil)
+	_ wfs.WriterFile     = (*MemFile)(nil)
+	_ wfs.SyncWriterFile = (*MemFile)(nil)
 )
 
 // Read reads bytes from this file.
@@ -348,4 +387,11 @@ func (f *MemFile) ReadDir(n int) ([]fs.DirEntry, error) {
 func (f *MemFile) Write(p []byte) (int, error) {
 	f.wrote = true
 	return f.buf.Write(p)
+}
+
+// Sync is a no-op for in-memory files. It exists to satisfy
+// wfs.SyncWriterFile so that callers writing for crash safety on osfs can
+// share the same code path on memfs.
+func (f *MemFile) Sync() error {
+	return nil
 }

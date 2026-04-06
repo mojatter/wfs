@@ -39,6 +39,10 @@ var osRemoveFunc = func(name string) error {
 	return os.Remove(name)
 }
 
+var osRenameFunc = func(oldpath, newpath string) error {
+	return os.Rename(oldpath, newpath)
+}
+
 var osRemoveAllFunc = func(path string) error {
 	return os.RemoveAll(path)
 }
@@ -58,6 +62,7 @@ var (
 	_ fs.SubFS         = (*OSFS)(nil)
 	_ wfs.WriteFileFS  = (*OSFS)(nil)
 	_ wfs.RemoveFileFS = (*OSFS)(nil)
+	_ wfs.RenameFS     = (*OSFS)(nil)
 )
 
 // NewOSFS returns a filesystem for the tree of files rooted at the directory dir.
@@ -145,6 +150,18 @@ func (fsys *OSFS) RemoveFile(name string) error {
 		return &fs.PathError{Op: "Remove", Path: name, Err: fs.ErrInvalid}
 	}
 	return osRemoveFunc(filepath.Join(fsys.Dir, name))
+}
+
+// Rename renames oldpath to newpath using os.Rename. On POSIX-backed
+// filesystems this is atomic when both paths are on the same filesystem.
+func (fsys *OSFS) Rename(oldpath, newpath string) error {
+	if isInvalidPath(oldpath) {
+		return &fs.PathError{Op: "Rename", Path: oldpath, Err: fs.ErrInvalid}
+	}
+	if isInvalidPath(newpath) {
+		return &fs.PathError{Op: "Rename", Path: newpath, Err: fs.ErrInvalid}
+	}
+	return osRenameFunc(filepath.Join(fsys.Dir, oldpath), filepath.Join(fsys.Dir, newpath))
 }
 
 // RemoveAll removes path and any children it contains.

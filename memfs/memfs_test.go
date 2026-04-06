@@ -41,6 +41,33 @@ func TestWriteFileFS(t *testing.T) {
 	}
 }
 
+func TestRenameFS(t *testing.T) {
+	fsys := New()
+	tmpdir := "tmpdir"
+	if err := fsys.MkdirAll(tmpdir, fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	if err := wfstest.TestRenameFS(fsys, tmpdir); err != nil {
+		t.Errorf(`Error wfs/wfstest: %+v`, err)
+	}
+}
+
+func TestMemFile_Sync(t *testing.T) {
+	fsys := New()
+	f, err := fsys.CreateFile("sync.txt", fs.ModePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	sf, ok := f.(wfs.SyncWriterFile)
+	if !ok {
+		t.Fatalf("memfs CreateFile result does not implement SyncWriterFile")
+	}
+	if err := sf.Sync(); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+}
+
 func TestCreateFile(t *testing.T) {
 	testCases := []struct {
 		name   string

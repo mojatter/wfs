@@ -36,6 +36,7 @@ type FSDelegator struct {
 	WriteFileFunc  func(name string, p []byte, mode fs.FileMode) (int, error)
 	RemoveFileFunc func(name string) error
 	RemoveAllFunc  func(path string) error
+	RenameFunc     func(oldpath, newpath string) error
 }
 
 var (
@@ -47,6 +48,7 @@ var (
 	_ fs.SubFS      = (*FSDelegator)(nil)
 	_ WriteFileFS   = (*FSDelegator)(nil)
 	_ RemoveFileFS  = (*FSDelegator)(nil)
+	_ RenameFS      = (*FSDelegator)(nil)
 )
 
 // Open calls OpenFunc(name).
@@ -130,6 +132,14 @@ func (d *FSDelegator) RemoveFile(name string) error {
 	return d.RemoveFileFunc(name)
 }
 
+// Rename calls RenameFunc(oldpath, newpath).
+func (d *FSDelegator) Rename(oldpath, newpath string) error {
+	if d.RenameFunc == nil {
+		return &fs.PathError{Op: "Rename", Path: oldpath, Err: ErrNotImplemented}
+	}
+	return d.RenameFunc(oldpath, newpath)
+}
+
 // RemoveAll calls RemoveAllFunc(name).
 func (d *FSDelegator) RemoveAll(path string) error {
 	if d.RemoveAllFunc == nil {
@@ -187,6 +197,9 @@ func DelegateFS(fsys fs.FS) *FSDelegator {
 		d.RemoveFileFunc = casted.RemoveFile
 		d.RemoveAllFunc = casted.RemoveAll
 	}
+	if casted, ok := fsys.(RenameFS); ok {
+		d.RenameFunc = casted.Rename
+	}
 	return d
 }
 
@@ -197,12 +210,14 @@ type FileDelegator struct {
 	CloseFunc   func() error
 	ReadDirFunc func(n int) ([]fs.DirEntry, error)
 	WriteFunc   func(p []byte) (int, error)
+	SyncFunc    func() error
 }
 
 var (
 	_ fs.File        = (*FileDelegator)(nil)
 	_ fs.ReadDirFile = (*FileDelegator)(nil)
 	_ WriterFile     = (*FileDelegator)(nil)
+	_ SyncWriterFile = (*FileDelegator)(nil)
 )
 
 // Stat calls StatFunc().
@@ -246,6 +261,15 @@ func (f *FileDelegator) Write(p []byte) (int, error) {
 	return f.WriteFunc(p)
 }
 
+// Sync calls SyncFunc().
+func (f *FileDelegator) Sync() error {
+	if f.SyncFunc == nil {
+		// NOTE: return no error so non-syncing files behave as a no-op.
+		return nil
+	}
+	return f.SyncFunc()
+}
+
 // DelegateFile returns a FileDelegator delegates the functions of the specified file.
 func DelegateFile(f fs.File) *FileDelegator {
 	d := &FileDelegator{
@@ -258,6 +282,9 @@ func DelegateFile(f fs.File) *FileDelegator {
 	}
 	if f, ok := f.(WriterFile); ok {
 		d.WriteFunc = f.Write
+	}
+	if f, ok := f.(SyncWriterFile); ok {
+		d.SyncFunc = f.Sync
 	}
 	return d
 }
