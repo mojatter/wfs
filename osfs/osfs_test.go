@@ -33,6 +33,44 @@ func TestWriteFileFS(t *testing.T) {
 	}
 }
 
+func TestRenameFS(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	fsys := New(filepath.Dir(tmpDir))
+	if err := wfstest.TestRenameFS(fsys, filepath.Base(tmpDir)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSyncWriterFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	fsys := New(tmpDir)
+	f, err := fsys.CreateFile("sync.txt", fs.ModePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := f.Write([]byte("data")); err != nil {
+		t.Fatal(err)
+	}
+	sf, ok := f.(wfs.SyncWriterFile)
+	if !ok {
+		t.Fatalf("osfs CreateFile result does not implement SyncWriterFile")
+	}
+	if err := sf.Sync(); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+}
+
 func TestMkdirAll(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {

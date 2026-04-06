@@ -17,6 +17,14 @@ type WriterFile interface {
 	io.Writer
 }
 
+// SyncWriterFile is a WriterFile that can flush its contents to stable storage.
+// Filesystems backed by the OS should implement Sync via (*os.File).Sync.
+// In-memory filesystems may implement Sync as a no-op.
+type SyncWriterFile interface {
+	WriterFile
+	Sync() error
+}
+
 // WriteFileFS is the interface implemented by a filesystem that provides an
 // optimized implementation of MkdirAll, CreateFile, WriteFile.
 type WriteFileFS interface {
@@ -77,6 +85,24 @@ func RemoveAll(fsys fs.FS, path string) error {
 		return fsys.RemoveAll(path)
 	}
 	return &fs.PathError{Op: "RemoveAll", Path: path, Err: ErrNotImplemented}
+}
+
+// RenameFS is the interface implemented by a filesystem that supports
+// renaming files. On POSIX-backed filesystems, Rename is atomic when oldpath
+// and newpath are on the same filesystem, which is the primitive used to
+// commit atomic writes.
+type RenameFS interface {
+	fs.FS
+	Rename(oldpath, newpath string) error
+}
+
+// Rename renames oldpath to newpath. If the filesystem implements RenameFS
+// calls fsys.Rename otherwise returns a PathError.
+func Rename(fsys fs.FS, oldpath, newpath string) error {
+	if fsys, ok := fsys.(RenameFS); ok {
+		return fsys.Rename(oldpath, newpath)
+	}
+	return &fs.PathError{Op: "Rename", Path: oldpath, Err: ErrNotImplemented}
 }
 
 // CopyFS walks the specified root directory on src and copies directories and

@@ -204,6 +204,35 @@ func TestRemoveAll_ErrNotImplemented(t *testing.T) {
 	}
 }
 
+func TestRename(t *testing.T) {
+	var gotOld, gotNew string
+	fsys := &FSDelegator{
+		RenameFunc: func(oldpath, newpath string) error {
+			gotOld, gotNew = oldpath, newpath
+			return nil
+		},
+	}
+	if err := Rename(fsys, "a", "b"); err != nil {
+		t.Fatal(err)
+	}
+	if gotOld != "a" || gotNew != "b" {
+		t.Errorf("unexpected %s -> %s", gotOld, gotNew)
+	}
+}
+
+func TestRename_ErrNotImplemented(t *testing.T) {
+	fsys := &OpenFSDelegator{}
+	wantErr := &fs.PathError{Op: "Rename", Path: "a", Err: ErrNotImplemented}
+	err := Rename(fsys, "a", "b")
+	if err == nil {
+		t.Fatal("no error")
+	}
+	gotErr, ok := err.(*fs.PathError)
+	if !ok || gotErr.Error() != wantErr.Error() {
+		t.Errorf("unexpected %v; want %v", err, wantErr)
+	}
+}
+
 func TestCopyFS(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
