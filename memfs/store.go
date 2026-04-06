@@ -60,7 +60,13 @@ func (v *value) Info() (fs.FileInfo, error) {
 
 // Store represents an in-memory key value store.
 // store.keys is always sorted.
-// All functions of the store are not thread safety.
+//
+// None of store's methods are safe for concurrent use. Callers MUST hold
+// an external *sync.Mutex for the entire duration of any store operation,
+// including operations that combine multiple store calls (for example a
+// get followed by a put). MemFS is the only intended user of store and
+// satisfies this contract by taking fsys.mutex at the top of every public
+// MemFS method that touches the store.
 type store struct {
 	keys   []string
 	values map[string]*value

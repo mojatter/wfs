@@ -15,8 +15,12 @@ import (
 
 // MemFS represents an in-memory filesystem.
 // MemFS keeps fs.FileMode but that permission is not checked.
+//
+// MemFS values returned from Sub share both the underlying store and the
+// mutex with their parent so concurrent access through a parent and any of
+// its sub-filesystems is serialized through a single lock.
 type MemFS struct {
-	mutex sync.Mutex
+	mutex *sync.Mutex
 	dir   string
 	store *store
 }
@@ -36,6 +40,7 @@ var (
 // New returns a new MemFS.
 func New() *MemFS {
 	return &MemFS{
+		mutex: &sync.Mutex{},
 		dir:   "/",
 		store: newStore(),
 	}
@@ -205,6 +210,7 @@ func (fsys *MemFS) Sub(dir string) (fs.FS, error) {
 		return nil, &fs.PathError{Op: "Sub", Path: dir, Err: fs.ErrInvalid}
 	}
 	return &MemFS{
+		mutex: fsys.mutex,
 		dir:   path.Join(fsys.dir, dir),
 		store: fsys.store,
 	}, nil
