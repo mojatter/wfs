@@ -28,6 +28,10 @@ func isInvalidPath(name string) bool {
 }
 
 var osCreateFunc = func(name string) (*os.File, error) {
+	// #nosec G304 -- osfs is a filesystem abstraction whose purpose is to
+	// create files at caller-supplied paths; callers reach this only after
+	// isInvalidPath rejects traversal-unsafe names and the path is joined
+	// under the configured root Dir.
 	return os.Create(name)
 }
 

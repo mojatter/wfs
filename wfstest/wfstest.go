@@ -52,7 +52,7 @@ func TestWriteFileFS(fsys fs.FS, tmpDir string) error {
 		f, err := wfs.CreateFile(fsys, name, fs.ModePerm)
 		if test.wantErr {
 			if err == nil {
-				f.Close()
+				_ = f.Close()
 				return fmt.Errorf("%s: CreateFile returns no error", name)
 			}
 			continue
@@ -86,39 +86,39 @@ func TestRenameFS(fsys fs.FS, tmpDir string) error {
 		return fmt.Errorf("WriteFile %s: %v", src, err)
 	}
 	if err := wfs.Rename(fsys, src, dst); err != nil {
-		return fmt.Errorf("Rename %s -> %s: %v", src, dst, err)
+		return fmt.Errorf("rename %s -> %s: %v", src, dst, err)
 	}
 	got, err := wfs.ReadFile(fsys, dst)
 	if err != nil {
-		return fmt.Errorf("ReadFile %s after rename: %v", dst, err)
+		return fmt.Errorf("read %s after rename: %v", dst, err)
 	}
 	if string(got) != string(data) {
-		return fmt.Errorf("Rename: content got %q; want %q", got, data)
+		return fmt.Errorf("rename: content got %q; want %q", got, data)
 	}
 	if _, err := fsys.Open(src); err == nil {
-		return fmt.Errorf("Rename: source %s still exists", src)
+		return fmt.Errorf("rename: source %s still exists", src)
 	}
 
 	// Rename over an existing file should replace it.
 	other := tmpDir + "/rename_other.txt"
 	other2 := []byte("other-payload")
 	if _, err := wfs.WriteFile(fsys, other, other2, fs.ModePerm); err != nil {
-		return fmt.Errorf("WriteFile %s: %v", other, err)
+		return fmt.Errorf("write %s: %v", other, err)
 	}
 	if err := wfs.Rename(fsys, other, dst); err != nil {
-		return fmt.Errorf("Rename overwrite %s -> %s: %v", other, dst, err)
+		return fmt.Errorf("rename overwrite %s -> %s: %v", other, dst, err)
 	}
 	got, err = wfs.ReadFile(fsys, dst)
 	if err != nil {
-		return fmt.Errorf("ReadFile %s after overwrite: %v", dst, err)
+		return fmt.Errorf("read %s after overwrite: %v", dst, err)
 	}
 	if string(got) != string(other2) {
-		return fmt.Errorf("Rename overwrite: content got %q; want %q", got, other2)
+		return fmt.Errorf("rename overwrite: content got %q; want %q", got, other2)
 	}
 
 	// Rename of a missing file should fail.
 	if err := wfs.Rename(fsys, tmpDir+"/does_not_exist.txt", tmpDir+"/whatever.txt"); err == nil {
-		return fmt.Errorf("Rename missing source: expected error, got nil")
+		return fmt.Errorf("rename missing source: expected error, got nil")
 	}
 
 	if err := wfs.RemoveFile(fsys, dst); err != nil {
@@ -135,7 +135,7 @@ func checkFileWrite(fsys fs.FS, f wfs.WriterFile, name string) error {
 	for _, p := range ps {
 		n, err := f.Write(p)
 		if err != nil {
-			f.Close()
+			_ = f.Close()
 			return fmt.Errorf("%s: WriterFile.Write: %v", name, err)
 		}
 		nn = nn + n
