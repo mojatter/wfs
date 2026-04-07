@@ -59,7 +59,9 @@ var (
 )
 
 // NewOSFS returns a filesystem for the tree of files rooted at the directory dir.
-// Deprecated: Use New.
+//
+// Deprecated: Use New. NewOSFS is retained for backwards compatibility and
+// is scheduled for removal in v0.6.0.
 func NewOSFS(dir string) *OSFS {
 	return New(dir)
 }
