@@ -1,3 +1,3 @@
 module github.com/mojatter/wfs
 
-go 1.26
+go 1.24
