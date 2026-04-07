@@ -39,7 +39,7 @@ jobs:
         name: Run go test
         run: |
           go mod tidy
-          go test -v ./...
+          go test -race -v ./...
       -
         # staticcheck v0.7.0 requires Go >= 1.25, so only run linters on
         # the latest toolchain in the matrix. Tests still cover all
