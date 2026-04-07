@@ -9,45 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.0]
 
+A documentation, tooling, and compatibility release. No public API
+changes; the code-level features (`RenameFS`, `SyncWriterFile`, the
+memfs `Sub` mutex fix, the memfs store performance work) all shipped
+in v0.4.1 and are now properly documented.
+
 ### Added
 
-- `RenameFS` interface and top-level `wfs.Rename` helper for atomic
-  cross-filesystem rename support (#6).
-- `SyncWriterFile` capability interface so callers can fsync a
-  `WriterFile` before closing it. `osfs` wraps `(*os.File).Sync` and
-  `memfs` implements it as a no-op so the same caller code works on
-  both backends (#6).
-- `wfstest.TestRenameFS` reusable conformance test for `RenameFS`
-  implementations (#6).
-- CI: `staticcheck` and `gosec` are now run on every push and pull
-  request (#7).
-- CI: Go version matrix (`1.24`, `1.25`, `stable`) so regressions
-  against the lowest supported toolchain are caught.
+- README sections covering capability layers, an `atomicWrite` example
+  built on `RenameFS` + `SyncWriterFile`, and the memfs limitations
+  callers should know about (Close-publishes-writes, Sync-is-a-noop,
+  file-only Rename) (#12).
+- `CHANGELOG.md`, starting with this entry (#13).
+- CI: Go version matrix (`1.24`, `stable`) so regressions against the
+  lowest supported toolchain are caught (#11).
+- CI: `go test -race` is now run on every PR (#15).
+- CI: aggregator job named `tests` so the branch protection required
+  check stays stable across future matrix changes (#11 follow-up).
 
 ### Changed
 
 - Minimum Go version is now 1.24 (was 1.26) so projects on older
-  toolchains can consume wfs.
-- `memfs` now documents in the `MemFile` godoc that writes are buffered
-  locally and only published on `Close`, that `Sync` is a no-op, and
-  that the same applies when used with the new `SyncWriterFile`
-  capability (#10).
+  toolchains can consume wfs (#11).
 
-### Fixed
+### Deprecated
 
-- `memfs.MemFS.Sub` previously returned a new `MemFS` with a fresh
-  `sync.Mutex` while sharing the underlying store. Concurrent access
-  through a parent and any of its sub-filesystems therefore raced.
-  `Sub` now shares the parent's mutex pointer so all views of the same
-  store serialize through a single lock (#8).
-
-### Performance
-
-- `memfs/store.put` no longer calls `sort.Strings` on every insert.
-  Bulk loads are now O(n) per put instead of O(n log n), giving roughly
-  a 30x speedup on the included `BenchmarkStore_put` (#9).
-- `memfs/store.removeAll` uses binary search to find the end of the
-  prefix range instead of a linear scan (#9).
+- `osfs.NewOSFS` is now documented as scheduled for removal in v0.6.0.
+  Use `osfs.New` instead (#14).
 
 ## [0.4.1] and earlier
 
