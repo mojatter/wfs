@@ -165,6 +165,34 @@ func TestStore_removeAll(t *testing.T) {
 	}
 }
 
+func TestStore_removeAll_siblingPrefix(t *testing.T) {
+	// removeAll("/dir0") must delete the directory and its real children
+	// only, leaving prefix-named siblings ("/dir0-tmp", "/dir0_bak") intact.
+	// A string-prefix match over-deletes them.
+	s := newStore()
+	keys := []string{
+		"/dir0",
+		"/dir0/file01.txt",
+		"/dir0-tmp",
+		"/dir0-tmp/file.txt",
+		"/dir0_bak",
+	}
+	for _, k := range keys {
+		s.put(k, &value{name: k, mode: fs.ModePerm})
+	}
+
+	s.removeAll("/dir0")
+
+	want := []string{
+		"/dir0-tmp",
+		"/dir0-tmp/file.txt",
+		"/dir0_bak",
+	}
+	if !reflect.DeepEqual(s.keys, want) {
+		t.Errorf(`after removeAll("/dir0") keys = %v; want %v`, s.keys, want)
+	}
+}
+
 func TestStore_prefixKeys(t *testing.T) {
 	testCases := []struct {
 		want   []string
@@ -195,6 +223,115 @@ func TestStore_prefixKeys(t *testing.T) {
 		if !reflect.DeepEqual(got, tc.want) {
 			t.Errorf(`Error prefixKeys("%s") got %v; want %v`, tc.prefix, got, tc.want)
 		}
+	}
+}
+
+func TestStore_prefixKeys_siblingPrefix(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		keys     []string
+		prefix   string
+		want     []string
+	}{
+		{
+			// '-' (0x2d) < '/' (0x2f): the sibling sorts between the dir
+			// key and its child, tripping the premature break.
+			caseName: "dash sibling (0x2d < 0x2f)",
+			keys: []string{
+				"/dir0",
+				"/dir0-tmp",
+				"/dir0-tmp/file.txt",
+				"/dir0/file01.txt",
+			},
+			prefix: "/dir0",
+			want:   []string{"/dir0/file01.txt"},
+		},
+		{
+			// '_' (0x5f) > '/': the sibling sorts after the child (control).
+			caseName: "underscore sibling (0x5f > 0x2f)",
+			keys: []string{
+				"/dir0",
+				"/dir0/file01.txt",
+				"/dir0_bak",
+				"/dir0_bak/file.txt",
+			},
+			prefix: "/dir0",
+			want:   []string{"/dir0/file01.txt"},
+		},
+		{
+			caseName: "no sibling",
+			keys: []string{
+				"/dir0",
+				"/dir0/file01.txt",
+			},
+			prefix: "/dir0",
+			want:   []string{"/dir0/file01.txt"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			s := newStore()
+			for _, k := range tc.keys {
+				s.put(k, &value{name: k, mode: fs.ModePerm})
+			}
+			got := s.prefixKeys(tc.prefix)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf(`prefixKeys(%q) got %v; want %v`, tc.prefix, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestStore_prefixGlobKeys_siblingPrefix(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		keys     []string
+		prefix   string
+		pattern  string
+		want     []string
+	}{
+		{
+			caseName: "dash sibling (0x2d < 0x2f)",
+			keys: []string{
+				"/dir0",
+				"/dir0-tmp",
+				"/dir0-tmp/file.txt",
+				"/dir0/file01.txt",
+			},
+			prefix:  "/dir0",
+			pattern: "*.txt",
+			want:    []string{"/dir0/file01.txt"},
+		},
+		{
+			caseName: "underscore sibling (0x5f > 0x2f)",
+			keys: []string{
+				"/dir0",
+				"/dir0/file01.txt",
+				"/dir0_bak",
+				"/dir0_bak/file.txt",
+			},
+			prefix:  "/dir0",
+			pattern: "*.txt",
+			want:    []string{"/dir0/file01.txt"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			s := newStore()
+			for _, k := range tc.keys {
+				s.put(k, &value{name: k, mode: fs.ModePerm})
+			}
+			got, err := s.prefixGlobKeys(tc.prefix, tc.pattern)
+			if err != nil {
+				t.Fatalf(`prefixGlobKeys(%q, %q) error: %v`, tc.prefix, tc.pattern, err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf(`prefixGlobKeys(%q, %q) got %v; want %v`,
+					tc.prefix, tc.pattern, got, tc.want)
+			}
+		})
 	}
 }
 

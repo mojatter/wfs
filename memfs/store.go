@@ -114,17 +114,27 @@ func (s *store) removeAll(prefix string) {
 		return
 	}
 
-	// Find the first key after `from` that does not start with prefix.
-	// Because s.keys is sorted, the prefix-matching range is contiguous,
-	// so we can binary-search for its end instead of scanning.
+	// Find the first key after `from` that does not share the string prefix.
+	// Because s.keys is sorted, that string-prefix range is contiguous, so we
+	// can binary-search for its end instead of scanning.
 	end := sort.Search(len(s.keys)-from, func(i int) bool {
 		return !strings.HasPrefix(s.keys[from+i], prefix)
 	}) + from
 
+	// The range also contains prefix-named siblings such as "dir0-tmp" that
+	// are not under "dir0/". Delete only the directory itself and its true
+	// children (a path-segment match), keeping the siblings intact.
+	child := prefix + "/"
+	kept := make([]string, 0, len(s.keys))
+	kept = append(kept, s.keys[:from]...)
 	for _, key := range s.keys[from:end] {
-		delete(s.values, key)
+		if key == prefix || strings.HasPrefix(key, child) {
+			delete(s.values, key)
+			continue
+		}
+		kept = append(kept, key)
 	}
-	s.keys = append(s.keys[:from], s.keys[end:]...)
+	s.keys = append(kept, s.keys[end:]...)
 }
 
 func (s *store) keyIndex(key string) int {
@@ -140,18 +150,28 @@ func (s *store) prefixKeys(prefix string) []string {
 	if i == -1 {
 		return nil
 	}
-	if !strings.HasSuffix(prefix, "/") {
-		prefix = prefix + "/"
+	child := prefix
+	if !strings.HasSuffix(child, "/") {
+		child = child + "/"
 	}
 
 	var keys []string
 	max := len(s.keys)
 	for i++; i < max; i++ {
 		key := s.keys[i]
+		// End of this directory's subtree: once a key no longer shares the
+		// string prefix, no later key can either (s.keys is sorted).
 		if !strings.HasPrefix(key, prefix) {
 			break
 		}
-		if strings.Contains(key[len(prefix):], "/") {
+		// A sibling such as "dir0-tmp" shares the string prefix "dir0" but
+		// is not under "dir0/". It can sort between the directory key and
+		// its children (e.g. '-' (0x2d) < '/' (0x2f)), so skip it rather
+		// than stopping the scan.
+		if !strings.HasPrefix(key, child) {
+			continue
+		}
+		if strings.Contains(key[len(child):], "/") {
 			continue
 		}
 		keys = append(keys, key)
@@ -164,18 +184,28 @@ func (s *store) prefixGlobKeys(prefix, pattern string) ([]string, error) {
 	if i == -1 {
 		return nil, nil
 	}
-	if !strings.HasSuffix(prefix, "/") {
-		prefix = prefix + "/"
+	child := prefix
+	if !strings.HasSuffix(child, "/") {
+		child = child + "/"
 	}
 
 	var keys []string
 	max := len(s.keys)
 	for i++; i < max; i++ {
 		key := s.keys[i]
+		// End of this directory's subtree: once a key no longer shares the
+		// string prefix, no later key can either (s.keys is sorted).
 		if !strings.HasPrefix(key, prefix) {
 			break
 		}
-		ok, err := path.Match(pattern, key[len(prefix):])
+		// A sibling such as "dir0-tmp" shares the string prefix "dir0" but
+		// is not under "dir0/". It can sort between the directory key and
+		// its children (e.g. '-' (0x2d) < '/' (0x2f)), so skip it rather
+		// than stopping the scan.
+		if !strings.HasPrefix(key, child) {
+			continue
+		}
+		ok, err := path.Match(pattern, key[len(child):])
 		if err != nil {
 			return nil, err
 		}
