@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1]
+
+A bug-fix release. No public API changes.
+
+### Fixed
+
+- memfs: directory enumeration (`ReadDir`, glob) and `RemoveAll` no
+  longer mishandle prefix-named siblings. A sibling such as `dir0-tmp`
+  shares the string prefix `dir0` and can sort between a directory key
+  and its children (`-` (0x2d) < `/` (0x2f)), which previously cut the
+  scan short or deleted the sibling along with `dir0/`. Enumeration and
+  removal now match on the full path segment (`dir0/`) instead of the
+  bare string prefix (#17).
+
 ## [0.5.0]
 
 A documentation, tooling, and compatibility release. No public API
@@ -41,5 +55,6 @@ in v0.4.1 and are now properly documented.
 
 See the git log.
 
-[Unreleased]: https://github.com/mojatter/wfs/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/mojatter/wfs/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/mojatter/wfs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/mojatter/wfs/compare/v0.4.1...v0.5.0
