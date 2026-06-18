@@ -46,7 +46,7 @@ func (v *value) IsDir() bool {
 	return v.isDir
 }
 
-func (v *value) Sys() interface{} {
+func (v *value) Sys() any {
 	return nil
 }
 

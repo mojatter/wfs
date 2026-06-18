@@ -347,7 +347,7 @@ type FileInfoValues struct {
 	Mode    fs.FileMode
 	ModTime time.Time
 	IsDir   bool
-	Sys     interface{}
+	Sys     any
 }
 
 // FileInfoDelegator implements fs.FileInfo.
@@ -383,7 +383,7 @@ func (d *FileInfoDelegator) IsDir() bool {
 }
 
 // Sys returns d.Values.Sys.
-func (d *FileInfoDelegator) Sys() interface{} {
+func (d *FileInfoDelegator) Sys() any {
 	return d.Values.Sys
 }
 
