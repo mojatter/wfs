@@ -114,17 +114,27 @@ func (s *store) removeAll(prefix string) {
 		return
 	}
 
-	// Find the first key after `from` that does not start with prefix.
-	// Because s.keys is sorted, the prefix-matching range is contiguous,
-	// so we can binary-search for its end instead of scanning.
+	// Find the first key after `from` that does not share the string prefix.
+	// Because s.keys is sorted, that string-prefix range is contiguous, so we
+	// can binary-search for its end instead of scanning.
 	end := sort.Search(len(s.keys)-from, func(i int) bool {
 		return !strings.HasPrefix(s.keys[from+i], prefix)
 	}) + from
 
+	// The range also contains prefix-named siblings such as "dir0-tmp" that
+	// are not under "dir0/". Delete only the directory itself and its true
+	// children (a path-segment match), keeping the siblings intact.
+	child := prefix + "/"
+	kept := make([]string, 0, len(s.keys))
+	kept = append(kept, s.keys[:from]...)
 	for _, key := range s.keys[from:end] {
-		delete(s.values, key)
+		if key == prefix || strings.HasPrefix(key, child) {
+			delete(s.values, key)
+			continue
+		}
+		kept = append(kept, key)
 	}
-	s.keys = append(s.keys[:from], s.keys[end:]...)
+	s.keys = append(kept, s.keys[end:]...)
 }
 
 func (s *store) keyIndex(key string) int {

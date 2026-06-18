@@ -165,6 +165,34 @@ func TestStore_removeAll(t *testing.T) {
 	}
 }
 
+func TestStore_removeAll_siblingPrefix(t *testing.T) {
+	// removeAll("/dir0") must delete the directory and its real children
+	// only, leaving prefix-named siblings ("/dir0-tmp", "/dir0_bak") intact.
+	// A string-prefix match over-deletes them.
+	s := newStore()
+	keys := []string{
+		"/dir0",
+		"/dir0/file01.txt",
+		"/dir0-tmp",
+		"/dir0-tmp/file.txt",
+		"/dir0_bak",
+	}
+	for _, k := range keys {
+		s.put(k, &value{name: k, mode: fs.ModePerm})
+	}
+
+	s.removeAll("/dir0")
+
+	want := []string{
+		"/dir0-tmp",
+		"/dir0-tmp/file.txt",
+		"/dir0_bak",
+	}
+	if !reflect.DeepEqual(s.keys, want) {
+		t.Errorf(`after removeAll("/dir0") keys = %v; want %v`, s.keys, want)
+	}
+}
+
 func TestStore_prefixKeys(t *testing.T) {
 	testCases := []struct {
 		want   []string
