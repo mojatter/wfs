@@ -434,11 +434,17 @@ func TestRemoveFile_Errors(t *testing.T) {
 	fsys := newMemFSTest(t)
 	name := "../invalid"
 
-	want := &fs.PathError{Op: "RemoveFile", Path: name, Err: fs.ErrInvalid}
-	got := fsys.RemoveFile(name)
-
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf(`Error RemoveFile("%s") returns %v; want %v`, name, got, want)
+	wantErr := &fs.PathError{Op: "RemoveFile", Path: name, Err: fs.ErrInvalid}
+	err := fsys.RemoveFile(name)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	gotErr, ok := err.(*fs.PathError)
+	if !ok {
+		t.Fatalf("unexpected %v", err)
+	}
+	if gotErr.Error() != wantErr.Error() {
+		t.Errorf(`Error RemoveFile("%s") returns %v; want %v`, name, gotErr, wantErr)
 	}
 }
 
@@ -468,11 +474,17 @@ func TestRemoveAll_Errors(t *testing.T) {
 	fsys := newMemFSTest(t)
 	name := "../invalid"
 
-	want := &fs.PathError{Op: "RemoveAll", Path: name, Err: fs.ErrInvalid}
-	got := fsys.RemoveAll(name)
-
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf(`Error RemoveAll("%s") returns %v; want %v`, name, got, want)
+	wantErr := &fs.PathError{Op: "RemoveAll", Path: name, Err: fs.ErrInvalid}
+	err := fsys.RemoveAll(name)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	gotErr, ok := err.(*fs.PathError)
+	if !ok {
+		t.Fatalf("unexpected %v", err)
+	}
+	if gotErr.Error() != wantErr.Error() {
+		t.Errorf(`Error RemoveAll("%s") returns %v; want %v`, name, gotErr, wantErr)
 	}
 }
 
