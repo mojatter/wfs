@@ -131,8 +131,7 @@ func BenchmarkStore_put(b *testing.B) {
 		keys[i] = fmt.Sprintf("/dir%05d/file%05d.txt", rng.Intn(n), i)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		s := newStore()
 		for _, k := range keys {
 			s.put(k, &value{name: k, mode: fs.ModePerm})
