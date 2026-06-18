@@ -73,12 +73,12 @@ func TestSubSharesMutex(t *testing.T) {
 	// mutex this is race-free; -race will catch a regression.
 	done := make(chan struct{})
 	go func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			_, _ = wfs.WriteFile(fsys, "sub/a.txt", []byte("a"), fs.ModePerm)
 		}
 		close(done)
 	}()
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		_, _ = wfs.WriteFile(sub, "b.txt", []byte("b"), fs.ModePerm)
 	}
 	<-done
