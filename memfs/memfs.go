@@ -132,7 +132,7 @@ func (fsys *MemFS) create(name string, mode fs.FileMode) (*value, error) {
 		v = &value{name: key, mode: mode}
 		fsys.store.put(key, v)
 	} else if v.isDir {
-		return nil, &fs.PathError{Op: "Create", Path: name, Err: fs.ErrInvalid}
+		return nil, &fs.PathError{Op: "Create", Path: name, Err: syscall.EISDIR}
 	}
 	return v, nil
 }
