@@ -321,7 +321,7 @@ func TestReadFile(t *testing.T) {
 			errStr: "Open not-found: file does not exist",
 		}, {
 			name:   "dir0",
-			errStr: "ReadFile dir0: invalid argument",
+			errStr: "ReadFile dir0: is a directory",
 		}, {
 			name:   "../invalid.txt",
 			errStr: "Open ../invalid.txt: invalid argument",

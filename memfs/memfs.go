@@ -209,7 +209,7 @@ func (fsys *MemFS) ReadFile(name string) ([]byte, error) {
 		return nil, err
 	}
 	if v.isDir {
-		return nil, &fs.PathError{Op: "ReadFile", Path: name, Err: fs.ErrInvalid}
+		return nil, &fs.PathError{Op: "ReadFile", Path: name, Err: syscall.EISDIR}
 	}
 	dest := make([]byte, len(v.data))
 	copy(dest, v.data)
