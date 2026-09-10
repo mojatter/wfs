@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -392,6 +393,36 @@ func TestSub_Lazy(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf(`Error ReadFile("not-found/test.txt") got "%s"; want "%s"`, got, want)
+	}
+
+	// NOTE: The created directory is named after its own segment, and is
+	// walkable from the parent.
+	info, err := fsys.Stat("not-found")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name() != "not-found" {
+		t.Errorf(`Error Stat("not-found") name got "%s"; want "not-found"`, info.Name())
+	}
+	var walked []string
+	err = fs.WalkDir(fsys, ".", func(name string, _ fs.DirEntry, err error) error {
+		walked = append(walked, name)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(walked, "not-found/test.txt") {
+		t.Errorf(`Error WalkDir did not visit "not-found/test.txt"; got %v`, walked)
+	}
+
+	// NOTE: A nested write through a sub creates the intermediate directory
+	// under the sub, not under a duplicated root.
+	if _, err := sub.(*MemFS).WriteFile("nested/test.txt", want, fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sub.(*MemFS).ReadDir("nested"); err != nil {
+		t.Errorf(`Error ReadDir("nested") through a sub got "%v"; want no error`, err)
 	}
 
 	// NOTE: Sub into a file succeeds and fails on use.

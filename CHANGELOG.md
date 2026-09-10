@@ -16,11 +16,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Sub` reporting `fs.ErrNotExist` (or rejecting a file) must check
   with `Stat` themselves.
 
+  Two caller-visible consequences on the osfs side of the same
+  convergence: `Sub("")` now returns an error where it previously
+  returned an FS rooted at `Dir`, and on Windows `Sub` now rejects
+  names containing `\` or `:`, like every other write path in the
+  package.
+
 ### Fixed
 
 - osfs: `Sub` now rejects paths that fail `fs.ValidPath`. Previously
   `Sub("../outside")` escaped the configured root, making files
   readable that `ReadFile` rejects on the same FS.
+- memfs: `mkdirAll` no longer applies the sub-FS root twice when
+  called through a `Sub`. `root.Sub("a")` then `WriteFile("b/c.txt")`
+  created `a/a` and `a/a/b` but never `a/b`, so `ReadDir("b")` failed
+  while `ReadFile("b/c.txt")` succeeded. A directory created this way
+  was also named `.`, which made the parent list an entry `.` and sent
+  `fs.WalkDir` into infinite recursion.
 
 ## [0.5.1]
 

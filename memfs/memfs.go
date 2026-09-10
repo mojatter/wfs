@@ -71,7 +71,10 @@ func (fsys *MemFS) mkdirAll(dir string, mode fs.FileMode) error {
 	}
 	keys := strings.Split(fsys.key(dir), "/")
 	for i, k := range keys {
-		key := fsys.key(path.Join(keys[0 : i+1]...))
+		key := strings.Join(keys[:i+1], "/")
+		if key == "" {
+			key = "/"
+		}
 		if v := fsys.store.get(key); v != nil {
 			if !v.isDir {
 				return &fs.PathError{Op: "MkdirAll", Path: dir, Err: fs.ErrInvalid}
