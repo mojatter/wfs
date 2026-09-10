@@ -41,13 +41,13 @@ jobs:
           go mod tidy
           go test -race -v ./...
       -
-        # staticcheck v0.7.0 requires Go >= 1.25, so only run linters on
+        # staticcheck v0.8.1 requires Go >= 1.26, so only run linters on
         # the latest toolchain in the matrix. Tests still cover all
         # supported Go versions.
         name: Run staticcheck
         if: matrix.go-version == 'stable'
         run: |
-          go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
           staticcheck ./...
       -
         name: Run gosec
