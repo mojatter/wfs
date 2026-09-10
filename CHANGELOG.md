@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0]
+
+A behavior-convergence release: memfs now matches osfs where the two
+disagreed on `Sub`, and on which error a few operations return. No
+public API changes, but several memfs error kinds change, and
+`osfs.Sub` validates its argument for the first time — see Changed.
+
 ### Changed
 
 - memfs: `Sub` is now lazy and no longer stats `dir`. A `Sub` into a
@@ -23,38 +30,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Windows `Sub` now rejects names containing `\` or `:`, like every
   other write path in the package. memfs and the stdlib `fs.Sub` reject
   the same non-clean paths, so this removes a divergence rather than
-  adding one.
+  adding one (#22).
 
 - memfs: `ReadFile` on a directory now returns `EISDIR` instead of
-  `fs.ErrInvalid`, matching osfs.
+  `fs.ErrInvalid`, matching osfs (#22).
 - memfs: `CreateFile` and `WriteFile` on an existing directory now
-  return `EISDIR` instead of `fs.ErrInvalid`, matching osfs.
+  return `EISDIR` instead of `fs.ErrInvalid`, matching osfs (#28).
 - memfs: `MkdirAll` now returns `ENOTDIR` instead of `fs.ErrInvalid`
   when a path component is an existing file, matching osfs. This also
   covers writes that create parents, so a write through a `Sub` rooted
-  at a file reports the same error as osfs.
+  at a file reports the same error as osfs (#22).
 
 ### Fixed
 
 - osfs: `Sub` now rejects paths that fail `fs.ValidPath`. Previously
   `Sub("../outside")` escaped the configured root, making files
-  readable that `ReadFile` rejects on the same FS.
+  readable that `ReadFile` rejects on the same FS (#22).
 - memfs: `mkdirAll` no longer applies the sub-FS root twice when
   called through a `Sub`. `root.Sub("a")` then `WriteFile("b/c.txt")`
   created `a/a` and `a/a/b` but never `a/b`, so `ReadDir("b")` failed
   while `ReadFile("b/c.txt")` succeeded. A directory created this way
   was also named `.`, which made the parent list an entry `.` and sent
-  `fs.WalkDir` into infinite recursion.
+  `fs.WalkDir` into infinite recursion (#22).
 - memfs: `Open(".")`, `ReadFile(".")` and `Stat(".")` on an FS rooted at
-  a file now return `ENOTDIR` instead of the file itself, matching osfs.
+  a file now return `ENOTDIR` instead of the file itself, matching osfs
+  (#22).
 - memfs: a path below an existing file now reports `ENOTDIR` instead of
   `fs.ErrNotExist`, matching osfs. This covers `Open`, `Stat`, `ReadDir`,
   `ReadFile` and `Rename`, including reads through a `Sub` rooted at a
-  file. `RemoveFile` and `RemoveAll` resolve no name at all and are left
-  alone (#27).
+  file (#22). `RemoveFile` and `RemoveAll` resolve no name at all and
+  are left alone (#27).
 - memfs: `Glob` through a `Sub` now returns names relative to the sub.
   It trimmed the sub's root without the separator, so it returned
-  `/file01.txt`, which `Open` on the same FS then rejected as invalid.
+  `/file01.txt`, which `Open` on the same FS then rejected as invalid
+  (#22).
 
 ## [0.5.1]
 
@@ -104,6 +113,7 @@ in v0.4.1 and are now properly documented.
 
 See the git log.
 
-[Unreleased]: https://github.com/mojatter/wfs/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/mojatter/wfs/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/mojatter/wfs/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/mojatter/wfs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/mojatter/wfs/compare/v0.4.1...v0.5.0
