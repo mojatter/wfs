@@ -103,7 +103,11 @@ func (fsys *OSFS) Stat(name string) (fs.FileInfo, error) {
 }
 
 // Sub returns an FS corresponding to the subtree rooted at dir.
+// dir need not exist; writes create it.
 func (fsys *OSFS) Sub(dir string) (fs.FS, error) {
+	if isInvalidPath(dir) {
+		return nil, &fs.PathError{Op: "Sub", Path: dir, Err: fs.ErrInvalid}
+	}
 	return NewOSFS(filepath.Join(fsys.Dir, dir)), nil
 }
 

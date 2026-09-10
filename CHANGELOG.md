@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- osfs: `Sub` now rejects paths that fail `fs.ValidPath`. Previously
+  `Sub("../outside")` escaped the configured root, making files
+  readable that `ReadFile` rejects on the same FS.
+
 ## [0.5.1]
 
 A bug-fix release. No public API changes.
