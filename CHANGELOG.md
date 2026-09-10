@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names containing `\` or `:`, like every other write path in the
   package.
 
+- memfs: `MkdirAll` now returns `ENOTDIR` instead of `fs.ErrInvalid`
+  when a path component is an existing file, matching osfs. This also
+  covers writes that create parents, so a write through a `Sub` rooted
+  at a file reports the same error as osfs.
+
 ### Fixed
 
 - osfs: `Sub` now rejects paths that fail `fs.ValidPath`. Previously

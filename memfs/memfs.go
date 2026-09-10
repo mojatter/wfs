@@ -90,7 +90,7 @@ func (fsys *MemFS) mkdirAll(dir string, mode fs.FileMode) error {
 		}
 		if v := fsys.store.get(key); v != nil {
 			if !v.isDir {
-				return &fs.PathError{Op: "MkdirAll", Path: dir, Err: fs.ErrInvalid}
+				return &fs.PathError{Op: "MkdirAll", Path: dir, Err: syscall.ENOTDIR}
 			}
 			continue
 		}

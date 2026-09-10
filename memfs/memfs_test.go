@@ -116,7 +116,7 @@ func TestCreateFile(t *testing.T) {
 			errStr: "Create newDir: invalid argument",
 		}, {
 			name:   "newDir/file.txt/invalid",
-			errStr: "MkdirAll newDir/file.txt: invalid argument",
+			errStr: "MkdirAll newDir/file.txt: not a directory",
 		}, {
 			name:   "../invalid",
 			errStr: "Create ../invalid: invalid argument",
@@ -164,7 +164,7 @@ func TestMkdirAll(t *testing.T) {
 			errStr: "MkdirAll ../invalid: invalid argument",
 		}, {
 			dir:    "dir0/file01.txt",
-			errStr: "MkdirAll dir0/file01.txt: invalid argument",
+			errStr: "MkdirAll dir0/file01.txt: not a directory",
 		},
 	}
 
@@ -434,8 +434,8 @@ func TestSub_Lazy(t *testing.T) {
 	if _, err := sub.Open("test.txt"); err == nil {
 		t.Error(`Error Open("test.txt") through a file Sub returned no error`)
 	}
-	if _, err := sub.(*MemFS).WriteFile("test.txt", want, fs.ModePerm); err == nil {
-		t.Error(`Error WriteFile("test.txt") through a file Sub returned no error`)
+	if _, err := sub.(*MemFS).WriteFile("test.txt", want, fs.ModePerm); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf(`Error WriteFile("test.txt") through a file Sub got "%v"; want ENOTDIR`, err)
 	}
 	// NOTE: The file itself is not reachable as the root of the sub.
 	if _, err := sub.Open("."); !errors.Is(err, syscall.ENOTDIR) {
