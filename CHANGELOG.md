@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fs.WalkDir` into infinite recursion.
 - memfs: `Open(".")`, `ReadFile(".")` and `Stat(".")` on an FS rooted at
   a file now return `ENOTDIR` instead of the file itself, matching osfs.
+- memfs: a path below an existing file now reports `ENOTDIR` instead of
+  `fs.ErrNotExist`, matching osfs. This covers every operation that
+  resolves a name, including reads through a `Sub` rooted at a file.
 - memfs: `Glob` through a `Sub` now returns names relative to the sub.
   It trimmed the sub's root without the separator, so it returned
   `/file01.txt`, which `Open` on the same FS then rejected as invalid.

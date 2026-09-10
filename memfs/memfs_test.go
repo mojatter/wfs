@@ -325,6 +325,9 @@ func TestReadFile(t *testing.T) {
 		}, {
 			name:   "../invalid.txt",
 			errStr: "Open ../invalid.txt: invalid argument",
+		}, {
+			name:   "dir0/file01.txt/below",
+			errStr: "Open dir0/file01.txt/below: not a directory",
 		},
 	}
 
@@ -457,8 +460,8 @@ func TestSub_Lazy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sub.Open("test.txt"); err == nil {
-		t.Error(`Error Open("test.txt") through a file Sub returned no error`)
+	if _, err := sub.Open("test.txt"); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf(`Error Open("test.txt") through a file Sub got "%v"; want ENOTDIR`, err)
 	}
 	if _, err := sub.(*MemFS).WriteFile("test.txt", want, fs.ModePerm); !errors.Is(err, syscall.ENOTDIR) {
 		t.Errorf(`Error WriteFile("test.txt") through a file Sub got "%v"; want ENOTDIR`, err)

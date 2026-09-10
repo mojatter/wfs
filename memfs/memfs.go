@@ -58,11 +58,26 @@ func (fsys *MemFS) open(name string) (*value, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "Open", Path: name, Err: fs.ErrInvalid}
 	}
-	v := fsys.store.get(fsys.key(name))
+	key := fsys.key(name)
+	v := fsys.store.get(key)
 	if v == nil {
+		if fsys.hasFileAncestor(key) {
+			return nil, &fs.PathError{Op: "Open", Path: name, Err: syscall.ENOTDIR}
+		}
 		return nil, &fs.PathError{Op: "Open", Path: name, Err: fs.ErrNotExist}
 	}
 	return v, nil
+}
+
+// hasFileAncestor reports whether the nearest existing ancestor of key is a
+// file. osfs reports a path below a file as ENOTDIR, not as a missing file.
+func (fsys *MemFS) hasFileAncestor(key string) bool {
+	for dir := path.Dir(key); dir != "/" && dir != "."; dir = path.Dir(dir) {
+		if v := fsys.store.get(dir); v != nil {
+			return !v.isDir
+		}
+	}
+	return false
 }
 
 // openRooted is open plus a guard for an FS rooted at a file, which osfs
