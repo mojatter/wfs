@@ -51,7 +51,7 @@ func (fsys *MemFS) key(name string) string {
 }
 
 func (fsys *MemFS) rel(name string) string {
-	return strings.TrimPrefix(name, fsys.dir)
+	return strings.TrimPrefix(strings.TrimPrefix(name, fsys.dir), "/")
 }
 
 func (fsys *MemFS) open(name string) (*value, error) {

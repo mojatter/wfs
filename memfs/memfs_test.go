@@ -232,6 +232,32 @@ func TestGlob(t *testing.T) {
 	}
 }
 
+func TestGlob_Sub(t *testing.T) {
+	fsys := newMemFSTest(t)
+	sub, err := fsys.Sub("dir0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// NOTE: Names are relative to the sub, so they can be opened through it.
+	got, err := sub.(*MemFS).Glob("*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"file01.txt", "file02.txt"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf(`Error Glob("*.txt") through a sub got %v; want %v`, got, want)
+	}
+	for _, name := range got {
+		f, err := sub.Open(name)
+		if err != nil {
+			t.Errorf(`Error Open("%s") got "%v"; want no error`, name, err)
+			continue
+		}
+		f.Close()
+	}
+}
+
 func TestReadDir(t *testing.T) {
 	testCases := []struct {
 		want   []string
