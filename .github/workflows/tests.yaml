@@ -53,7 +53,7 @@ jobs:
         name: Run gosec
         if: matrix.go-version == 'stable'
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.24.7
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
           gosec ./...
 
   # Aggregator job kept under the stable name "tests" so the branch
