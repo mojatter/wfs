@@ -352,11 +352,11 @@ func TestSub_Errors(t *testing.T) {
 			dir:    "../invalid",
 			errStr: "Sub ../invalid: invalid argument",
 		}, {
-			dir:    "not-found",
-			errStr: "Open not-found: file does not exist",
+			dir:    "/absolute",
+			errStr: "Sub /absolute: invalid argument",
 		}, {
-			dir:    "dir0/file01.txt",
-			errStr: "Sub dir0/file01.txt: invalid argument",
+			dir:    "",
+			errStr: "Sub : invalid argument",
 		},
 	}
 
@@ -370,6 +370,40 @@ func TestSub_Errors(t *testing.T) {
 		if err.Error() != tc.errStr {
 			t.Errorf(`Error Sub("%s") error got "%v"; want "%s"`, tc.dir, err, tc.errStr)
 		}
+	}
+}
+
+func TestSub_Lazy(t *testing.T) {
+	fsys := newMemFSTest(t)
+
+	// NOTE: Sub into a missing directory; the write creates it.
+	sub, err := fsys.Sub("not-found")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []byte(`test`)
+	_, err = sub.(*MemFS).WriteFile("test.txt", want, fs.ModePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := fsys.ReadFile("not-found/test.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf(`Error ReadFile("not-found/test.txt") got "%s"; want "%s"`, got, want)
+	}
+
+	// NOTE: Sub into a file succeeds and fails on use.
+	sub, err = fsys.Sub("dir0/file01.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sub.Open("test.txt"); err == nil {
+		t.Error(`Error Open("test.txt") through a file Sub returned no error`)
+	}
+	if _, err := sub.(*MemFS).WriteFile("test.txt", want, fs.ModePerm); err == nil {
+		t.Error(`Error WriteFile("test.txt") through a file Sub returned no error`)
 	}
 }
 

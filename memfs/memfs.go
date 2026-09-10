@@ -195,18 +195,9 @@ func (fsys *MemFS) Stat(name string) (fs.FileInfo, error) {
 }
 
 // Sub returns an FS corresponding to the subtree rooted at dir.
+// dir need not exist; writes create it, as on osfs.
 func (fsys *MemFS) Sub(dir string) (fs.FS, error) {
-	fsys.mutex.Lock()
-	defer fsys.mutex.Unlock()
-
 	if !fs.ValidPath(dir) {
-		return nil, &fs.PathError{Op: "Sub", Path: dir, Err: fs.ErrInvalid}
-	}
-	info, err := fsys.open(dir)
-	if err != nil {
-		return nil, err
-	}
-	if !info.isDir {
 		return nil, &fs.PathError{Op: "Sub", Path: dir, Err: fs.ErrInvalid}
 	}
 	return &MemFS{

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- memfs: `Sub` is now lazy and no longer stats `dir`. A `Sub` into a
+  missing directory succeeds, and a write through the returned FS
+  creates the directory, matching `osfs` and the stdlib `fs.Sub`
+  fallback so a memfs can stand in for an osfs. Callers that relied on
+  `Sub` reporting `fs.ErrNotExist` (or rejecting a file) must check
+  with `Stat` themselves.
+
 ### Fixed
 
 - osfs: `Sub` now rejects paths that fail `fs.ValidPath`. Previously
