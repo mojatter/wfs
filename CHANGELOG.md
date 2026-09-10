@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   while `ReadFile("b/c.txt")` succeeded. A directory created this way
   was also named `.`, which made the parent list an entry `.` and sent
   `fs.WalkDir` into infinite recursion.
+- memfs: `Open(".")`, `ReadFile(".")` and `Stat(".")` on an FS rooted at
+  a file now return `ENOTDIR` instead of the file itself, matching osfs.
 
 ## [0.5.1]
 

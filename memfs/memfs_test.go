@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"testing/fstest"
 
@@ -435,6 +436,19 @@ func TestSub_Lazy(t *testing.T) {
 	}
 	if _, err := sub.(*MemFS).WriteFile("test.txt", want, fs.ModePerm); err == nil {
 		t.Error(`Error WriteFile("test.txt") through a file Sub returned no error`)
+	}
+	// NOTE: The file itself is not reachable as the root of the sub.
+	if _, err := sub.Open("."); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf(`Error Open(".") through a file Sub got "%v"; want ENOTDIR`, err)
+	}
+	if _, err := sub.(*MemFS).ReadFile("."); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf(`Error ReadFile(".") through a file Sub got "%v"; want ENOTDIR`, err)
+	}
+	if _, err := sub.(*MemFS).ReadDir("."); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf(`Error ReadDir(".") through a file Sub got "%v"; want ENOTDIR`, err)
+	}
+	if _, err := sub.(*MemFS).Stat("."); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf(`Error Stat(".") through a file Sub got "%v"; want ENOTDIR`, err)
 	}
 }
 

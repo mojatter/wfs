@@ -65,6 +65,19 @@ func (fsys *MemFS) open(name string) (*value, error) {
 	return v, nil
 }
 
+// openRooted is open plus a guard for an FS rooted at a file, which osfs
+// reports as ENOTDIR.
+func (fsys *MemFS) openRooted(name string) (*value, error) {
+	v, err := fsys.open(name)
+	if err != nil {
+		return nil, err
+	}
+	if name == "." && !v.isDir {
+		return nil, &fs.PathError{Op: "Open", Path: name, Err: syscall.ENOTDIR}
+	}
+	return v, nil
+}
+
 func (fsys *MemFS) mkdirAll(dir string, mode fs.FileMode) error {
 	if !fs.ValidPath(dir) {
 		return &fs.PathError{Op: "MkdirAll", Path: dir, Err: fs.ErrInvalid}
@@ -114,7 +127,7 @@ func (fsys *MemFS) Open(name string) (fs.File, error) {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
 
-	v, err := fsys.open(name)
+	v, err := fsys.openRooted(name)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +189,7 @@ func (fsys *MemFS) ReadFile(name string) ([]byte, error) {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
 
-	v, err := fsys.open(name)
+	v, err := fsys.openRooted(name)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +207,7 @@ func (fsys *MemFS) Stat(name string) (fs.FileInfo, error) {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
 
-	return fsys.open(name)
+	return fsys.openRooted(name)
 }
 
 // Sub returns an FS corresponding to the subtree rooted at dir.
