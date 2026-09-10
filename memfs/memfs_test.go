@@ -481,6 +481,51 @@ func TestSub_Lazy(t *testing.T) {
 	}
 }
 
+func TestRename_Errors(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		oldpath  string
+		newpath  string
+		errStr   string
+	}{
+		{
+			caseName: "below an existing file",
+			oldpath:  "dir0/file01.txt/below",
+			newpath:  "moved.txt",
+			errStr:   "Rename dir0/file01.txt/below: not a directory",
+		}, {
+			caseName: "missing source",
+			oldpath:  "not-found",
+			newpath:  "moved.txt",
+			errStr:   "Rename not-found: file does not exist",
+		}, {
+			caseName: "directory source",
+			oldpath:  "dir0",
+			newpath:  "moved",
+			errStr:   "Rename dir0: invalid argument",
+		}, {
+			caseName: "destination below an existing file",
+			oldpath:  "dir0/file01.txt",
+			newpath:  "dir0/file02.txt/below",
+			errStr:   "MkdirAll dir0/file02.txt: not a directory",
+		},
+	}
+
+	fsys := newMemFSTest(t)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			err := fsys.Rename(tc.oldpath, tc.newpath)
+			if err == nil {
+				t.Fatalf(`Fatal Rename("%s", "%s") returned no error`, tc.oldpath, tc.newpath)
+			}
+			if err.Error() != tc.errStr {
+				t.Errorf(`Error Rename("%s", "%s") error got "%v"; want "%s"`,
+					tc.oldpath, tc.newpath, err, tc.errStr)
+			}
+		})
+	}
+}
+
 func TestWriteFile(t *testing.T) {
 	data := []byte(`testdata`)
 	testCases := []struct {

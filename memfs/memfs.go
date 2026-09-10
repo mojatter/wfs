@@ -292,6 +292,9 @@ func (fsys *MemFS) Rename(oldpath, newpath string) error {
 	oldKey := fsys.key(oldpath)
 	v := fsys.store.get(oldKey)
 	if v == nil {
+		if fsys.hasFileAncestor(oldKey) {
+			return &fs.PathError{Op: "Rename", Path: oldpath, Err: syscall.ENOTDIR}
+		}
 		return &fs.PathError{Op: "Rename", Path: oldpath, Err: fs.ErrNotExist}
 	}
 	if v.isDir {
