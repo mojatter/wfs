@@ -113,7 +113,7 @@ func TestCreateFile(t *testing.T) {
 			name: "newDir/file.txt",
 		}, {
 			name:   "newDir",
-			errStr: "Create newDir: invalid argument",
+			errStr: "Create newDir: is a directory",
 		}, {
 			name:   "newDir/file.txt/invalid",
 			errStr: "MkdirAll newDir/file.txt: not a directory",
@@ -538,7 +538,7 @@ func TestWriteFile(t *testing.T) {
 			name: "dir0/file01.txt",
 		}, {
 			name:   "dir0",
-			errStr: "Create dir0: invalid argument",
+			errStr: "Create dir0: is a directory",
 		}, {
 			name:   "../invalid.txt",
 			errStr: "Create ../invalid.txt: invalid argument",

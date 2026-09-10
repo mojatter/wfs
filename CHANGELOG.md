@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - memfs: `ReadFile` on a directory now returns `EISDIR` instead of
   `fs.ErrInvalid`, matching osfs.
+- memfs: `CreateFile` and `WriteFile` on an existing directory now
+  return `EISDIR` instead of `fs.ErrInvalid`, matching osfs.
 - memfs: `MkdirAll` now returns `ENOTDIR` instead of `fs.ErrInvalid`
   when a path component is an existing file, matching osfs. This also
   covers writes that create parents, so a write through a `Sub` rooted
