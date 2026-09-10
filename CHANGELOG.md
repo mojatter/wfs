@@ -16,11 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Sub` reporting `fs.ErrNotExist` (or rejecting a file) must check
   with `Stat` themselves.
 
-  Two caller-visible consequences on the osfs side of the same
+  Caller-visible consequences on the osfs side of the same
   convergence: `Sub("")` now returns an error where it previously
-  returned an FS rooted at `Dir`, and on Windows `Sub` now rejects
-  names containing `\` or `:`, like every other write path in the
-  package.
+  returned an FS rooted at `Dir`, non-clean paths such as `cache/`,
+  `./cache` and `a//b` are rejected instead of being normalized, and on
+  Windows `Sub` now rejects names containing `\` or `:`, like every
+  other write path in the package. memfs and the stdlib `fs.Sub` reject
+  the same non-clean paths, so this removes a divergence rather than
+  adding one.
 
 - memfs: `MkdirAll` now returns `ENOTDIR` instead of `fs.ErrInvalid`
   when a path component is an existing file, matching osfs. This also
