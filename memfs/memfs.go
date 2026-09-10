@@ -51,16 +51,44 @@ func (fsys *MemFS) key(name string) string {
 }
 
 func (fsys *MemFS) rel(name string) string {
-	return strings.TrimPrefix(name, fsys.dir)
+	return strings.TrimPrefix(strings.TrimPrefix(name, fsys.dir), "/")
 }
 
 func (fsys *MemFS) open(name string) (*value, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "Open", Path: name, Err: fs.ErrInvalid}
 	}
-	v := fsys.store.get(fsys.key(name))
+	key := fsys.key(name)
+	v := fsys.store.get(key)
 	if v == nil {
+		if fsys.hasFileAncestor(key) {
+			return nil, &fs.PathError{Op: "Open", Path: name, Err: syscall.ENOTDIR}
+		}
 		return nil, &fs.PathError{Op: "Open", Path: name, Err: fs.ErrNotExist}
+	}
+	return v, nil
+}
+
+// hasFileAncestor reports whether the nearest existing ancestor of key is a
+// file. osfs reports a path below a file as ENOTDIR, not as a missing file.
+func (fsys *MemFS) hasFileAncestor(key string) bool {
+	for dir := path.Dir(key); dir != "/" && dir != "."; dir = path.Dir(dir) {
+		if v := fsys.store.get(dir); v != nil {
+			return !v.isDir
+		}
+	}
+	return false
+}
+
+// openRooted is open plus a guard for an FS rooted at a file, which osfs
+// reports as ENOTDIR.
+func (fsys *MemFS) openRooted(name string) (*value, error) {
+	v, err := fsys.open(name)
+	if err != nil {
+		return nil, err
+	}
+	if name == "." && !v.isDir {
+		return nil, &fs.PathError{Op: "Open", Path: name, Err: syscall.ENOTDIR}
 	}
 	return v, nil
 }
@@ -71,10 +99,13 @@ func (fsys *MemFS) mkdirAll(dir string, mode fs.FileMode) error {
 	}
 	keys := strings.Split(fsys.key(dir), "/")
 	for i, k := range keys {
-		key := fsys.key(path.Join(keys[0 : i+1]...))
+		key := strings.Join(keys[:i+1], "/")
+		if key == "" {
+			key = "/"
+		}
 		if v := fsys.store.get(key); v != nil {
 			if !v.isDir {
-				return &fs.PathError{Op: "MkdirAll", Path: dir, Err: fs.ErrInvalid}
+				return &fs.PathError{Op: "MkdirAll", Path: dir, Err: syscall.ENOTDIR}
 			}
 			continue
 		}
@@ -111,7 +142,7 @@ func (fsys *MemFS) Open(name string) (fs.File, error) {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
 
-	v, err := fsys.open(name)
+	v, err := fsys.openRooted(name)
 	if err != nil {
 		return nil, err
 	}
@@ -173,12 +204,12 @@ func (fsys *MemFS) ReadFile(name string) ([]byte, error) {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
 
-	v, err := fsys.open(name)
+	v, err := fsys.openRooted(name)
 	if err != nil {
 		return nil, err
 	}
 	if v.isDir {
-		return nil, &fs.PathError{Op: "ReadFile", Path: name, Err: fs.ErrInvalid}
+		return nil, &fs.PathError{Op: "ReadFile", Path: name, Err: syscall.EISDIR}
 	}
 	dest := make([]byte, len(v.data))
 	copy(dest, v.data)
@@ -191,22 +222,13 @@ func (fsys *MemFS) Stat(name string) (fs.FileInfo, error) {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
 
-	return fsys.open(name)
+	return fsys.openRooted(name)
 }
 
 // Sub returns an FS corresponding to the subtree rooted at dir.
+// dir need not exist; writes create it, as on osfs.
 func (fsys *MemFS) Sub(dir string) (fs.FS, error) {
-	fsys.mutex.Lock()
-	defer fsys.mutex.Unlock()
-
 	if !fs.ValidPath(dir) {
-		return nil, &fs.PathError{Op: "Sub", Path: dir, Err: fs.ErrInvalid}
-	}
-	info, err := fsys.open(dir)
-	if err != nil {
-		return nil, err
-	}
-	if !info.isDir {
 		return nil, &fs.PathError{Op: "Sub", Path: dir, Err: fs.ErrInvalid}
 	}
 	return &MemFS{
@@ -270,6 +292,9 @@ func (fsys *MemFS) Rename(oldpath, newpath string) error {
 	oldKey := fsys.key(oldpath)
 	v := fsys.store.get(oldKey)
 	if v == nil {
+		if fsys.hasFileAncestor(oldKey) {
+			return &fs.PathError{Op: "Rename", Path: oldpath, Err: syscall.ENOTDIR}
+		}
 		return &fs.PathError{Op: "Rename", Path: oldpath, Err: fs.ErrNotExist}
 	}
 	if v.isDir {

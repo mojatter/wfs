@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- memfs: `Sub` is now lazy and no longer stats `dir`. A `Sub` into a
+  missing directory succeeds, and a write through the returned FS
+  creates the directory, matching `osfs` and the stdlib `fs.Sub`
+  fallback so a memfs can stand in for an osfs. Callers that relied on
+  `Sub` reporting `fs.ErrNotExist` (or rejecting a file) must check
+  with `Stat` themselves.
+
+  Caller-visible consequences on the osfs side of the same
+  convergence: `Sub("")` now returns an error where it previously
+  returned an FS rooted at `Dir`, non-clean paths such as `cache/`,
+  `./cache` and `a//b` are rejected instead of being normalized, and on
+  Windows `Sub` now rejects names containing `\` or `:`, like every
+  other write path in the package. memfs and the stdlib `fs.Sub` reject
+  the same non-clean paths, so this removes a divergence rather than
+  adding one.
+
+- memfs: `ReadFile` on a directory now returns `EISDIR` instead of
+  `fs.ErrInvalid`, matching osfs.
+- memfs: `MkdirAll` now returns `ENOTDIR` instead of `fs.ErrInvalid`
+  when a path component is an existing file, matching osfs. This also
+  covers writes that create parents, so a write through a `Sub` rooted
+  at a file reports the same error as osfs.
+
+### Fixed
+
+- osfs: `Sub` now rejects paths that fail `fs.ValidPath`. Previously
+  `Sub("../outside")` escaped the configured root, making files
+  readable that `ReadFile` rejects on the same FS.
+- memfs: `mkdirAll` no longer applies the sub-FS root twice when
+  called through a `Sub`. `root.Sub("a")` then `WriteFile("b/c.txt")`
+  created `a/a` and `a/a/b` but never `a/b`, so `ReadDir("b")` failed
+  while `ReadFile("b/c.txt")` succeeded. A directory created this way
+  was also named `.`, which made the parent list an entry `.` and sent
+  `fs.WalkDir` into infinite recursion.
+- memfs: `Open(".")`, `ReadFile(".")` and `Stat(".")` on an FS rooted at
+  a file now return `ENOTDIR` instead of the file itself, matching osfs.
+- memfs: a path below an existing file now reports `ENOTDIR` instead of
+  `fs.ErrNotExist`, matching osfs. This covers `Open`, `Stat`, `ReadDir`,
+  `ReadFile` and `Rename`, including reads through a `Sub` rooted at a
+  file. `RemoveFile` and `RemoveAll` resolve no name at all and are left
+  alone (#27).
+- memfs: `Glob` through a `Sub` now returns names relative to the sub.
+  It trimmed the sub's root without the separator, so it returned
+  `/file01.txt`, which `Open` on the same FS then rejected as invalid.
+
 ## [0.5.1]
 
 A bug-fix release. No public API changes.

@@ -6,7 +6,9 @@ import (
 	"io/fs"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"testing/fstest"
 
@@ -114,7 +116,7 @@ func TestCreateFile(t *testing.T) {
 			errStr: "Create newDir: invalid argument",
 		}, {
 			name:   "newDir/file.txt/invalid",
-			errStr: "MkdirAll newDir/file.txt: invalid argument",
+			errStr: "MkdirAll newDir/file.txt: not a directory",
 		}, {
 			name:   "../invalid",
 			errStr: "Create ../invalid: invalid argument",
@@ -162,7 +164,7 @@ func TestMkdirAll(t *testing.T) {
 			errStr: "MkdirAll ../invalid: invalid argument",
 		}, {
 			dir:    "dir0/file01.txt",
-			errStr: "MkdirAll dir0/file01.txt: invalid argument",
+			errStr: "MkdirAll dir0/file01.txt: not a directory",
 		},
 	}
 
@@ -230,6 +232,32 @@ func TestGlob(t *testing.T) {
 	}
 }
 
+func TestGlob_Sub(t *testing.T) {
+	fsys := newMemFSTest(t)
+	sub, err := fsys.Sub("dir0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// NOTE: Names are relative to the sub, so they can be opened through it.
+	got, err := sub.(*MemFS).Glob("*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"file01.txt", "file02.txt"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf(`Error Glob("*.txt") through a sub got %v; want %v`, got, want)
+	}
+	for _, name := range got {
+		f, err := sub.Open(name)
+		if err != nil {
+			t.Errorf(`Error Open("%s") got "%v"; want no error`, name, err)
+			continue
+		}
+		f.Close()
+	}
+}
+
 func TestReadDir(t *testing.T) {
 	testCases := []struct {
 		want   []string
@@ -293,10 +321,13 @@ func TestReadFile(t *testing.T) {
 			errStr: "Open not-found: file does not exist",
 		}, {
 			name:   "dir0",
-			errStr: "ReadFile dir0: invalid argument",
+			errStr: "ReadFile dir0: is a directory",
 		}, {
 			name:   "../invalid.txt",
 			errStr: "Open ../invalid.txt: invalid argument",
+		}, {
+			name:   "dir0/file01.txt/below",
+			errStr: "Open dir0/file01.txt/below: not a directory",
 		},
 	}
 
@@ -352,11 +383,11 @@ func TestSub_Errors(t *testing.T) {
 			dir:    "../invalid",
 			errStr: "Sub ../invalid: invalid argument",
 		}, {
-			dir:    "not-found",
-			errStr: "Open not-found: file does not exist",
+			dir:    "/absolute",
+			errStr: "Sub /absolute: invalid argument",
 		}, {
-			dir:    "dir0/file01.txt",
-			errStr: "Sub dir0/file01.txt: invalid argument",
+			dir:    "",
+			errStr: "Sub : invalid argument",
 		},
 	}
 
@@ -370,6 +401,128 @@ func TestSub_Errors(t *testing.T) {
 		if err.Error() != tc.errStr {
 			t.Errorf(`Error Sub("%s") error got "%v"; want "%s"`, tc.dir, err, tc.errStr)
 		}
+	}
+}
+
+func TestSub_Lazy(t *testing.T) {
+	fsys := newMemFSTest(t)
+
+	// NOTE: Sub into a missing directory; the write creates it.
+	sub, err := fsys.Sub("not-found")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []byte(`test`)
+	_, err = sub.(*MemFS).WriteFile("test.txt", want, fs.ModePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := fsys.ReadFile("not-found/test.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf(`Error ReadFile("not-found/test.txt") got "%s"; want "%s"`, got, want)
+	}
+
+	// NOTE: The created directory is named after its own segment, and is
+	// walkable from the parent.
+	info, err := fsys.Stat("not-found")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name() != "not-found" {
+		t.Errorf(`Error Stat("not-found") name got "%s"; want "not-found"`, info.Name())
+	}
+	var walked []string
+	err = fs.WalkDir(fsys, ".", func(name string, _ fs.DirEntry, err error) error {
+		walked = append(walked, name)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(walked, "not-found/test.txt") {
+		t.Errorf(`Error WalkDir did not visit "not-found/test.txt"; got %v`, walked)
+	}
+
+	// NOTE: A nested write through a sub creates the intermediate directory
+	// under the sub, not under a duplicated root.
+	if _, err := sub.(*MemFS).WriteFile("nested/test.txt", want, fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sub.(*MemFS).ReadDir("nested"); err != nil {
+		t.Errorf(`Error ReadDir("nested") through a sub got "%v"; want no error`, err)
+	}
+
+	// NOTE: Sub into a file succeeds and fails on use.
+	sub, err = fsys.Sub("dir0/file01.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sub.Open("test.txt"); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf(`Error Open("test.txt") through a file Sub got "%v"; want ENOTDIR`, err)
+	}
+	if _, err := sub.(*MemFS).WriteFile("test.txt", want, fs.ModePerm); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf(`Error WriteFile("test.txt") through a file Sub got "%v"; want ENOTDIR`, err)
+	}
+	// NOTE: The file itself is not reachable as the root of the sub.
+	if _, err := sub.Open("."); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf(`Error Open(".") through a file Sub got "%v"; want ENOTDIR`, err)
+	}
+	if _, err := sub.(*MemFS).ReadFile("."); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf(`Error ReadFile(".") through a file Sub got "%v"; want ENOTDIR`, err)
+	}
+	if _, err := sub.(*MemFS).ReadDir("."); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf(`Error ReadDir(".") through a file Sub got "%v"; want ENOTDIR`, err)
+	}
+	if _, err := sub.(*MemFS).Stat("."); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf(`Error Stat(".") through a file Sub got "%v"; want ENOTDIR`, err)
+	}
+}
+
+func TestRename_Errors(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		oldpath  string
+		newpath  string
+		errStr   string
+	}{
+		{
+			caseName: "below an existing file",
+			oldpath:  "dir0/file01.txt/below",
+			newpath:  "moved.txt",
+			errStr:   "Rename dir0/file01.txt/below: not a directory",
+		}, {
+			caseName: "missing source",
+			oldpath:  "not-found",
+			newpath:  "moved.txt",
+			errStr:   "Rename not-found: file does not exist",
+		}, {
+			caseName: "directory source",
+			oldpath:  "dir0",
+			newpath:  "moved",
+			errStr:   "Rename dir0: invalid argument",
+		}, {
+			caseName: "destination below an existing file",
+			oldpath:  "dir0/file01.txt",
+			newpath:  "dir0/file02.txt/below",
+			errStr:   "MkdirAll dir0/file02.txt: not a directory",
+		},
+	}
+
+	fsys := newMemFSTest(t)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			err := fsys.Rename(tc.oldpath, tc.newpath)
+			if err == nil {
+				t.Fatalf(`Fatal Rename("%s", "%s") returned no error`, tc.oldpath, tc.newpath)
+			}
+			if err.Error() != tc.errStr {
+				t.Errorf(`Error Rename("%s", "%s") error got "%v"; want "%s"`,
+					tc.oldpath, tc.newpath, err, tc.errStr)
+			}
+		})
 	}
 }
 

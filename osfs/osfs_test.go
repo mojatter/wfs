@@ -234,6 +234,27 @@ func TestSub_WriteFile(t *testing.T) {
 	}
 }
 
+func TestSub_Errors(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		dir      string
+	}{
+		{caseName: "escapes the root", dir: "../outside"},
+		{caseName: "absolute path", dir: "/absolute"},
+		{caseName: "empty path", dir: ""},
+	}
+
+	fsys := New("testdata")
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			_, err := fsys.Sub(tc.dir)
+			if !errors.Is(err, fs.ErrInvalid) {
+				t.Errorf(`Error Sub("%s") error got %v; want %v`, tc.dir, err, fs.ErrInvalid)
+			}
+		})
+	}
+}
+
 func TestRemoveFile(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
