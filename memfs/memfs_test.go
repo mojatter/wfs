@@ -635,6 +635,10 @@ func TestRemoveFile_Errors(t *testing.T) {
 			caseName: "below an existing file",
 			name:     "dir0/file01.txt/below",
 			wantErr:  syscall.ENOTDIR,
+		}, {
+			caseName: "non-empty directory",
+			name:     "dir0",
+			wantErr:  syscall.ENOTEMPTY,
 		},
 	}
 
@@ -654,6 +658,24 @@ func TestRemoveFile_Errors(t *testing.T) {
 				t.Errorf(`Error RemoveFile("%s") returns %v; want %v`, tc.name, gotErr, wantErr)
 			}
 		})
+	}
+}
+
+func TestRemoveFile_EmptyDir(t *testing.T) {
+	fsys := newMemFSTest(t)
+	if err := fsys.MkdirAll("empty", fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := fsys.RemoveFile("empty"); err != nil {
+		t.Fatalf(`Fatal RemoveFile("empty") returns %v; want nil`, err)
+	}
+
+	if _, err := fsys.Stat("empty"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf(`Error Stat("empty") after RemoveFile returns %v; want %v`, err, fs.ErrNotExist)
+	}
+	if _, err := fsys.Stat("dir0/file01.txt"); err != nil {
+		t.Errorf(`Error RemoveFile("empty") disturbed dir0/file01.txt: %v`, err)
 	}
 }
 

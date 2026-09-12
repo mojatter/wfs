@@ -325,15 +325,21 @@ func (fsys *MemFS) Rename(oldpath, newpath string) error {
 	return nil
 }
 
-// RemoveFile removes the specified named file.
+// RemoveFile removes the specified named file. An empty directory is removed
+// too; a non-empty one returns ENOTEMPTY, as on osfs.
 func (fsys *MemFS) RemoveFile(name string) error {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
 
-	if _, err := fsys.lookup("RemoveFile", name); err != nil {
+	v, err := fsys.lookup("RemoveFile", name)
+	if err != nil {
 		return err
 	}
-	fsys.store.remove(fsys.key(name))
+	key := fsys.key(name)
+	if v.isDir && len(fsys.store.prefixKeys(key)) > 0 {
+		return &fs.PathError{Op: "RemoveFile", Path: name, Err: syscall.ENOTEMPTY}
+	}
+	fsys.store.remove(key)
 	return nil
 }
 
