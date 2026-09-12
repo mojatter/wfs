@@ -728,3 +728,59 @@ func TestMemFile_ReadDir_Errors(t *testing.T) {
 		t.Fatalf(`Fatal ReadDir(1) returns no error`)
 	}
 }
+
+func TestValueNameIsBaseSegment(t *testing.T) {
+	fsys := New()
+	sub, err := fsys.Sub("a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wfs.WriteFile(fsys, "a/b/c.txt", []byte(`content`), fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wfs.WriteFile(sub, "e/f.txt", []byte(`content`), fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	if err := fsys.Rename("a/b/c.txt", "a/d.txt"); err != nil {
+		t.Fatal(err)
+	}
+
+	testCases := []struct {
+		caseName string
+		key      string
+		want     string
+	}{
+		{
+			caseName: "root",
+			key:      "/",
+			want:     ".",
+		}, {
+			caseName: "directory",
+			key:      "/a/b",
+			want:     "b",
+		}, {
+			caseName: "file",
+			key:      "/a/e/f.txt",
+			want:     "f.txt",
+		}, {
+			caseName: "directory through Sub",
+			key:      "/a/e",
+			want:     "e",
+		}, {
+			caseName: "renamed file",
+			key:      "/a/d.txt",
+			want:     "d.txt",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			v := fsys.store.get(tc.key)
+			if v == nil {
+				t.Fatalf(`Fatal store.get("%s") returned nil`, tc.key)
+			}
+			if v.name != tc.want {
+				t.Errorf(`Error store.get("%s").name is "%s"; want "%s"`, tc.key, v.name, tc.want)
+			}
+		})
+	}
+}

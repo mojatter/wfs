@@ -13,7 +13,7 @@ import (
 
 func TestValue(t *testing.T) {
 	v := &value{
-		name:    "path/to/name",
+		name:    "name",
 		data:    []byte(`content`),
 		mode:    fs.ModePerm,
 		modTime: time.Now(),
@@ -55,11 +55,11 @@ func TestValue(t *testing.T) {
 var testStoreSrc = map[string]*value{
 	"/":                {name: ".", mode: fs.ModePerm, isDir: true},
 	"/dir0":            {name: "dir0", mode: fs.ModePerm, isDir: true},
-	"/dir0/file01.txt": {name: "dir0/file01.txt", mode: fs.ModePerm, isDir: false},
-	"/dir0/file02.txt": {name: "dir0/file02.txt", mode: fs.ModePerm, isDir: false},
-	"/dir1":            {name: "dir0", mode: fs.ModePerm, isDir: true},
-	"/dir1/file11.txt": {name: "dir1/file11.txt", mode: fs.ModePerm, isDir: false},
-	"/dir1/file12.txt": {name: "dir1/file12.txt", mode: fs.ModePerm, isDir: false},
+	"/dir0/file01.txt": {name: "file01.txt", mode: fs.ModePerm, isDir: false},
+	"/dir0/file02.txt": {name: "file02.txt", mode: fs.ModePerm, isDir: false},
+	"/dir1":            {name: "dir1", mode: fs.ModePerm, isDir: true},
+	"/dir1/file11.txt": {name: "file11.txt", mode: fs.ModePerm, isDir: false},
+	"/dir1/file12.txt": {name: "file12.txt", mode: fs.ModePerm, isDir: false},
 	"/file1.txt":       {name: "file1.txt", mode: fs.ModePerm, isDir: false},
 	"/file2.txt":       {name: "file2.txt", mode: fs.ModePerm, isDir: false},
 }

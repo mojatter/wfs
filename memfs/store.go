@@ -3,7 +3,6 @@ package memfs
 import (
 	"io/fs"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -11,7 +10,7 @@ import (
 
 // Value works as fs.DirEntry or fs.FileInfo.
 type value struct {
-	name    string
+	name    string // base segment of the store key, "." for the root
 	data    []byte
 	mode    fs.FileMode
 	modTime time.Time
@@ -24,7 +23,7 @@ var (
 )
 
 func (v *value) Name() string {
-	return filepath.Base(v.name)
+	return v.name
 }
 
 func (v *value) Size() int64 {
