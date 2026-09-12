@@ -623,6 +623,69 @@ func TestRemoveAll(t *testing.T) {
 	}
 }
 
+func TestRemoveAll_Root(t *testing.T) {
+	fsys := newMemFSTest(t)
+	if _, err := wfs.WriteFile(fsys, "dir0-tmp/keep.txt", []byte(`keep`), fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := fsys.RemoveAll("."); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(fsys.store.keys) != 0 {
+		t.Errorf(`Error RemoveAll(".") left keys %v; want []`, fsys.store.keys)
+	}
+	if _, err := fsys.Stat("."); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf(`Error Stat(".") after RemoveAll(".") returns %v; want %v`, err, fs.ErrNotExist)
+	}
+	if _, err := fsys.ReadFile("dir0/file01.txt"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf(`Error ReadFile after RemoveAll(".") returns %v; want %v`, err, fs.ErrNotExist)
+	}
+
+	if _, err := wfs.WriteFile(fsys, "x.txt", []byte(`x`), fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := fsys.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, entry := range entries {
+		got = append(got, entry.Name())
+	}
+	want := []string{"x.txt"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf(`Error ReadDir(".") after rewrite returns %v; want %v`, got, want)
+	}
+}
+
+func TestRemoveAll_SubRoot(t *testing.T) {
+	fsys := newMemFSTest(t)
+	if _, err := wfs.WriteFile(fsys, "dir0-tmp/keep.txt", []byte(`keep`), fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	sub, err := fsys.Sub("dir0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := wfs.RemoveAll(sub, "."); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, key := range []string{"/dir0", "/dir0/file01.txt", "/dir0/file02.txt"} {
+		if v := fsys.store.get(key); v != nil {
+			t.Errorf(`Error RemoveAll(".") through Sub left %s`, key)
+		}
+	}
+	for _, key := range []string{"/", "/dir0-tmp/keep.txt"} {
+		if v := fsys.store.get(key); v == nil {
+			t.Errorf(`Error RemoveAll(".") through Sub removed %s`, key)
+		}
+	}
+}
+
 func TestRemoveAll_Errors(t *testing.T) {
 	fsys := newMemFSTest(t)
 	name := "../invalid"

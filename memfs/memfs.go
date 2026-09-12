@@ -328,7 +328,8 @@ func (fsys *MemFS) RemoveFile(name string) error {
 	return nil
 }
 
-// RemoveAll removes path and any children it contains.
+// RemoveAll removes path and any children it contains. Removing "." removes
+// the root itself, as on osfs; a later write recreates it.
 func (fsys *MemFS) RemoveAll(path string) error {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
