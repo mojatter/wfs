@@ -129,7 +129,7 @@ func (fsys *MemFS) create(name string, mode fs.FileMode) (*value, error) {
 	key := fsys.key(name)
 	v := fsys.store.get(key)
 	if v == nil {
-		v = &value{name: key, mode: mode}
+		v = &value{name: path.Base(name), mode: mode}
 		fsys.store.put(key, v)
 	} else if v.isDir {
 		return nil, &fs.PathError{Op: "Create", Path: name, Err: syscall.EISDIR}
@@ -310,7 +310,7 @@ func (fsys *MemFS) Rename(oldpath, newpath string) error {
 	}
 
 	fsys.store.remove(oldKey)
-	v.name = newKey
+	v.name = path.Base(newpath)
 	fsys.store.put(newKey, v)
 	return nil
 }
