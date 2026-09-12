@@ -164,6 +164,19 @@ func TestStore_removeAll(t *testing.T) {
 	}
 }
 
+func TestStore_removeAll_root(t *testing.T) {
+	s := newStoreTest()
+
+	s.removeAll("/")
+
+	if len(s.keys) != 0 {
+		t.Errorf(`after removeAll("/") keys = %v; want []`, s.keys)
+	}
+	if len(s.values) != 0 {
+		t.Errorf(`after removeAll("/") values = %v; want empty`, s.values)
+	}
+}
+
 func TestStore_removeAll_siblingPrefix(t *testing.T) {
 	// removeAll("/dir0") must delete the directory and its real children
 	// only, leaving prefix-named siblings ("/dir0-tmp", "/dir0_bak") intact.

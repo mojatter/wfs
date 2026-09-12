@@ -123,7 +123,11 @@ func (s *store) removeAll(prefix string) {
 	// The range also contains prefix-named siblings such as "dir0-tmp" that
 	// are not under "dir0/". Delete only the directory itself and its true
 	// children (a path-segment match), keeping the siblings intact.
+	// At the root, prefix + "/" would be "//" and match nothing.
 	child := prefix + "/"
+	if prefix == "/" {
+		child = prefix
+	}
 	kept := make([]string, 0, len(s.keys))
 	kept = append(kept, s.keys[:from]...)
 	for _, key := range s.keys[from:end] {
