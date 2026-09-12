@@ -316,7 +316,7 @@ func (fsys *MemFS) Rename(oldpath, newpath string) error {
 	}
 	newKey := fsys.key(newpath)
 	if existing := fsys.store.get(newKey); existing != nil && existing.isDir {
-		return &fs.PathError{Op: "Rename", Path: newpath, Err: fs.ErrInvalid}
+		return &fs.PathError{Op: "Rename", Path: newpath, Err: syscall.EEXIST}
 	}
 
 	fsys.store.remove(fsys.key(oldpath))

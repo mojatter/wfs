@@ -509,6 +509,11 @@ func TestRename_Errors(t *testing.T) {
 			newpath:  "dir0/file02.txt/below",
 			errStr:   "Rename dir0/file02.txt/below: not a directory",
 		}, {
+			caseName: "destination is an existing directory",
+			oldpath:  "dir0/file01.txt",
+			newpath:  "dir0",
+			errStr:   "Rename dir0: file exists",
+		}, {
 			caseName: "destination parent missing",
 			oldpath:  "dir0/file01.txt",
 			newpath:  "missing/b.txt",
