@@ -283,6 +283,7 @@ func (fsys *MemFS) WriteFile(name string, p []byte, mode fs.FileMode) (int, erro
 // Rename renames oldpath to newpath. The move happens atomically under the
 // filesystem mutex. Rename currently supports files only; renaming a directory
 // returns a PathError. If newpath already exists as a file it is replaced.
+// The parent directory of newpath must exist, as on osfs.
 func (fsys *MemFS) Rename(oldpath, newpath string) error {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
@@ -302,8 +303,16 @@ func (fsys *MemFS) Rename(oldpath, newpath string) error {
 		return &fs.PathError{Op: "Rename", Path: oldpath, Err: fs.ErrInvalid}
 	}
 
-	if err := fsys.mkdirAll(path.Dir(newpath), v.mode); err != nil {
-		return err
+	parentKey := fsys.key(path.Dir(newpath))
+	parent := fsys.store.get(parentKey)
+	if parent == nil {
+		if fsys.hasFileAncestor(parentKey) {
+			return &fs.PathError{Op: "Rename", Path: newpath, Err: syscall.ENOTDIR}
+		}
+		return &fs.PathError{Op: "Rename", Path: newpath, Err: fs.ErrNotExist}
+	}
+	if !parent.isDir {
+		return &fs.PathError{Op: "Rename", Path: newpath, Err: syscall.ENOTDIR}
 	}
 	newKey := fsys.key(newpath)
 	if existing := fsys.store.get(newKey); existing != nil && existing.isDir {

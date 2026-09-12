@@ -507,7 +507,12 @@ func TestRename_Errors(t *testing.T) {
 			caseName: "destination below an existing file",
 			oldpath:  "dir0/file01.txt",
 			newpath:  "dir0/file02.txt/below",
-			errStr:   "MkdirAll dir0/file02.txt: not a directory",
+			errStr:   "Rename dir0/file02.txt/below: not a directory",
+		}, {
+			caseName: "destination parent missing",
+			oldpath:  "dir0/file01.txt",
+			newpath:  "missing/b.txt",
+			errStr:   "Rename missing/b.txt: file does not exist",
 		},
 	}
 
@@ -523,6 +528,30 @@ func TestRename_Errors(t *testing.T) {
 					tc.oldpath, tc.newpath, err, tc.errStr)
 			}
 		})
+	}
+}
+
+func TestRename_MissingParentIsNoOp(t *testing.T) {
+	fsys := newMemFSTest(t)
+	oldpath := "dir0/file01.txt"
+	want, err := fsys.ReadFile(oldpath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := fsys.Rename(oldpath, "missing/b.txt"); err == nil {
+		t.Fatal(`Fatal Rename into a missing directory returned no error`)
+	}
+
+	if _, err := fsys.Stat("missing"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf(`Error Stat("missing") after a failed Rename returns %v; want %v`, err, fs.ErrNotExist)
+	}
+	got, err := fsys.ReadFile(oldpath)
+	if err != nil {
+		t.Fatalf(`Fatal ReadFile("%s") after a failed Rename: %v`, oldpath, err)
+	}
+	if string(got) != string(want) {
+		t.Errorf(`Error ReadFile("%s") after a failed Rename is %q; want %q`, oldpath, got, want)
 	}
 }
 
