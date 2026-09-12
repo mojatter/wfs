@@ -54,19 +54,24 @@ func (fsys *MemFS) rel(name string) string {
 	return strings.TrimPrefix(strings.TrimPrefix(name, fsys.dir), "/")
 }
 
-func (fsys *MemFS) open(name string) (*value, error) {
+// lookup resolves name, reporting op in any *fs.PathError it returns.
+func (fsys *MemFS) lookup(op, name string) (*value, error) {
 	if !fs.ValidPath(name) {
-		return nil, &fs.PathError{Op: "Open", Path: name, Err: fs.ErrInvalid}
+		return nil, &fs.PathError{Op: op, Path: name, Err: fs.ErrInvalid}
 	}
 	key := fsys.key(name)
 	v := fsys.store.get(key)
 	if v == nil {
 		if fsys.hasFileAncestor(key) {
-			return nil, &fs.PathError{Op: "Open", Path: name, Err: syscall.ENOTDIR}
+			return nil, &fs.PathError{Op: op, Path: name, Err: syscall.ENOTDIR}
 		}
-		return nil, &fs.PathError{Op: "Open", Path: name, Err: fs.ErrNotExist}
+		return nil, &fs.PathError{Op: op, Path: name, Err: fs.ErrNotExist}
 	}
 	return v, nil
+}
+
+func (fsys *MemFS) open(name string) (*value, error) {
+	return fsys.lookup("Open", name)
 }
 
 // hasFileAncestor reports whether the nearest existing ancestor of key is a
@@ -289,13 +294,9 @@ func (fsys *MemFS) Rename(oldpath, newpath string) error {
 		return &fs.PathError{Op: "Rename", Path: newpath, Err: fs.ErrInvalid}
 	}
 
-	oldKey := fsys.key(oldpath)
-	v := fsys.store.get(oldKey)
-	if v == nil {
-		if fsys.hasFileAncestor(oldKey) {
-			return &fs.PathError{Op: "Rename", Path: oldpath, Err: syscall.ENOTDIR}
-		}
-		return &fs.PathError{Op: "Rename", Path: oldpath, Err: fs.ErrNotExist}
+	v, err := fsys.lookup("Rename", oldpath)
+	if err != nil {
+		return err
 	}
 	if v.isDir {
 		return &fs.PathError{Op: "Rename", Path: oldpath, Err: fs.ErrInvalid}
@@ -309,7 +310,7 @@ func (fsys *MemFS) Rename(oldpath, newpath string) error {
 		return &fs.PathError{Op: "Rename", Path: newpath, Err: fs.ErrInvalid}
 	}
 
-	fsys.store.remove(oldKey)
+	fsys.store.remove(fsys.key(oldpath))
 	v.name = path.Base(newpath)
 	fsys.store.put(newKey, v)
 	return nil
@@ -320,10 +321,9 @@ func (fsys *MemFS) RemoveFile(name string) error {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
 
-	if !fs.ValidPath(name) {
-		return &fs.PathError{Op: "RemoveFile", Path: name, Err: fs.ErrInvalid}
+	if _, err := fsys.lookup("RemoveFile", name); err != nil {
+		return err
 	}
-
 	fsys.store.remove(fsys.key(name))
 	return nil
 }
@@ -337,8 +337,15 @@ func (fsys *MemFS) RemoveAll(path string) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "RemoveAll", Path: path, Err: fs.ErrInvalid}
 	}
-
-	fsys.store.removeAll(fsys.key(path))
+	key := fsys.key(path)
+	if fsys.store.get(key) == nil {
+		if fsys.hasFileAncestor(key) {
+			return &fs.PathError{Op: "RemoveAll", Path: path, Err: syscall.ENOTDIR}
+		}
+		// A missing name is not an error, as in os.RemoveAll.
+		return nil
+	}
+	fsys.store.removeAll(key)
 	return nil
 }
 
