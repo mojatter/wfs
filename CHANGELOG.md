@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0]
+
+A behavior-convergence release, continuing v0.6.0. Four memfs
+operations silently succeeded where osfs reports an error; they now
+report it. No public API changes, but every change below turns a
+success into an error, or an incomplete removal into a complete one —
+see Changed.
+
+### Changed
+
+- memfs: `RemoveFile` now resolves the name before removing it. A
+  missing name returns `fs.ErrNotExist` and a path below an existing
+  file returns `ENOTDIR`; both were silently a success (#27).
+- memfs: `RemoveFile` on a directory now removes it only when it is
+  empty and returns `ENOTEMPTY` otherwise, matching `os.Remove`. It
+  previously unlinked the directory and left the subtree behind (#32).
+- memfs: `RemoveAll` now returns `ENOTDIR` for a path below an
+  existing file. A missing name still returns `nil`, matching osfs and
+  `os.RemoveAll` (#27).
+- memfs: `Rename` no longer creates the missing parent directories of
+  `newpath`. A missing parent returns `fs.ErrNotExist` and a parent
+  that is a file returns `ENOTDIR`, matching `os.Rename`. A failed
+  `Rename` is therefore a no-op again; the parents it created used to
+  survive when a later check failed (#27).
+- memfs: `Rename` onto an existing directory now returns `EEXIST`
+  instead of `fs.ErrInvalid`, matching osfs. This comes from
+  `os.Rename`'s own check rather than the platform `rename(2)` errno,
+  so the two backends agree on every OS (#27).
+- memfs: `RemoveAll(".")` now removes the root of the filesystem
+  itself, as `osfs.RemoveAll(".")` removes its host directory. `Stat`
+  reports `fs.ErrNotExist` afterwards and the next write recreates the
+  root (#26).
+
+### Fixed
+
+- memfs: `RemoveAll(".")` left every descendant in the store. The
+  child prefix was built as `//` at the root, which matches no key, so
+  only the root marker was deleted. Reads of the orphans still
+  succeeded while the root reported not-exist (#26).
+- memfs: a directory removed by `RemoveFile` left its children in the
+  store, unreachable. They no longer appeared in `ReadDir` but were
+  still readable, and `RemoveAll` could not reclaim them because it
+  bails when the directory key is gone (#32).
+- memfs: `value.name` held the full store key for files and the base
+  segment for directories. `Name()` hid the difference, so nothing was
+  caller-visible, but any other reader of the field got one of two
+  shapes. It is now the base segment for both (#24).
+
+### Deprecated
+
+- `osfs.NewOSFS` is now scheduled for removal in v0.8.0. It was
+  documented for removal in v0.6.0 but kept. Use `osfs.New` instead.
+
 ## [0.6.0]
 
 A behavior-convergence release: memfs now matches osfs where the two
@@ -113,7 +166,8 @@ in v0.4.1 and are now properly documented.
 
 See the git log.
 
-[Unreleased]: https://github.com/mojatter/wfs/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/mojatter/wfs/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/mojatter/wfs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/mojatter/wfs/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/mojatter/wfs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/mojatter/wfs/compare/v0.4.1...v0.5.0
