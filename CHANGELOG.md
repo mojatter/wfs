@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1]
+
+A memfs-only bugfix release. No public API changes.
+
+### Fixed
+
+- memfs: `ModTime` was always the zero time. Entries now get the
+  creation time, and `WriteFile` (and so `MemFile.Close`) refreshes it.
+  `Rename` keeps it, matching osfs. A directory's `ModTime` does not
+  change when entries are added to or removed from it (#36).
+- memfs: `Stat` and `ReadDir` returned the stored entry itself, so a
+  held `FileInfo` or `DirEntry` changed its `Name`, `Size` and
+  `ModTime` when the file was later written or renamed, and reading it
+  raced with the writer. They now return a copy, as osfs does (#36).
+
 ## [0.7.0]
 
 A behavior-convergence release, continuing v0.6.0. Three memfs
@@ -164,7 +179,8 @@ in v0.4.1 and are now properly documented.
 
 See the git log.
 
-[Unreleased]: https://github.com/mojatter/wfs/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/mojatter/wfs/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/mojatter/wfs/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/mojatter/wfs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/mojatter/wfs/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/mojatter/wfs/compare/v0.5.0...v0.5.1
