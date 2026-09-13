@@ -507,7 +507,17 @@ func TestRename_Errors(t *testing.T) {
 			caseName: "destination below an existing file",
 			oldpath:  "dir0/file01.txt",
 			newpath:  "dir0/file02.txt/below",
-			errStr:   "MkdirAll dir0/file02.txt: not a directory",
+			errStr:   "Rename dir0/file02.txt/below: not a directory",
+		}, {
+			caseName: "destination is an existing directory",
+			oldpath:  "dir0/file01.txt",
+			newpath:  "dir0",
+			errStr:   "Rename dir0: file exists",
+		}, {
+			caseName: "destination parent missing",
+			oldpath:  "dir0/file01.txt",
+			newpath:  "missing/b.txt",
+			errStr:   "Rename missing/b.txt: file does not exist",
 		},
 	}
 
@@ -523,6 +533,30 @@ func TestRename_Errors(t *testing.T) {
 					tc.oldpath, tc.newpath, err, tc.errStr)
 			}
 		})
+	}
+}
+
+func TestRename_MissingParentIsNoOp(t *testing.T) {
+	fsys := newMemFSTest(t)
+	oldpath := "dir0/file01.txt"
+	want, err := fsys.ReadFile(oldpath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := fsys.Rename(oldpath, "missing/b.txt"); err == nil {
+		t.Fatal(`Fatal Rename into a missing directory returned no error`)
+	}
+
+	if _, err := fsys.Stat("missing"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf(`Error Stat("missing") after a failed Rename returns %v; want %v`, err, fs.ErrNotExist)
+	}
+	got, err := fsys.ReadFile(oldpath)
+	if err != nil {
+		t.Fatalf(`Fatal ReadFile("%s") after a failed Rename: %v`, oldpath, err)
+	}
+	if string(got) != string(want) {
+		t.Errorf(`Error ReadFile("%s") after a failed Rename is %q; want %q`, oldpath, got, want)
 	}
 }
 
@@ -584,20 +618,64 @@ func TestRemoveFile(t *testing.T) {
 }
 
 func TestRemoveFile_Errors(t *testing.T) {
-	fsys := newMemFSTest(t)
-	name := "../invalid"
+	testCases := []struct {
+		caseName string
+		name     string
+		wantErr  error
+	}{
+		{
+			caseName: "invalid path",
+			name:     "../invalid",
+			wantErr:  fs.ErrInvalid,
+		}, {
+			caseName: "missing name",
+			name:     "not-found",
+			wantErr:  fs.ErrNotExist,
+		}, {
+			caseName: "below an existing file",
+			name:     "dir0/file01.txt/below",
+			wantErr:  syscall.ENOTDIR,
+		}, {
+			caseName: "non-empty directory",
+			name:     "dir0",
+			wantErr:  errNotEmpty,
+		},
+	}
 
-	wantErr := &fs.PathError{Op: "RemoveFile", Path: name, Err: fs.ErrInvalid}
-	err := fsys.RemoveFile(name)
-	if err == nil {
-		t.Fatal("no error")
+	fsys := newMemFSTest(t)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			wantErr := &fs.PathError{Op: "RemoveFile", Path: tc.name, Err: tc.wantErr}
+			err := fsys.RemoveFile(tc.name)
+			if err == nil {
+				t.Fatal("no error")
+			}
+			gotErr, ok := err.(*fs.PathError)
+			if !ok {
+				t.Fatalf("unexpected %v", err)
+			}
+			if gotErr.Error() != wantErr.Error() {
+				t.Errorf(`Error RemoveFile("%s") returns %v; want %v`, tc.name, gotErr, wantErr)
+			}
+		})
 	}
-	gotErr, ok := err.(*fs.PathError)
-	if !ok {
-		t.Fatalf("unexpected %v", err)
+}
+
+func TestRemoveFile_EmptyDir(t *testing.T) {
+	fsys := newMemFSTest(t)
+	if err := fsys.MkdirAll("empty", fs.ModePerm); err != nil {
+		t.Fatal(err)
 	}
-	if gotErr.Error() != wantErr.Error() {
-		t.Errorf(`Error RemoveFile("%s") returns %v; want %v`, name, gotErr, wantErr)
+
+	if err := fsys.RemoveFile("empty"); err != nil {
+		t.Fatalf(`Fatal RemoveFile("empty") returns %v; want nil`, err)
+	}
+
+	if _, err := fsys.Stat("empty"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf(`Error Stat("empty") after RemoveFile returns %v; want %v`, err, fs.ErrNotExist)
+	}
+	if _, err := fsys.Stat("dir0/file01.txt"); err != nil {
+		t.Errorf(`Error RemoveFile("empty") disturbed dir0/file01.txt: %v`, err)
 	}
 }
 
@@ -687,20 +765,48 @@ func TestRemoveAll_SubRoot(t *testing.T) {
 }
 
 func TestRemoveAll_Errors(t *testing.T) {
-	fsys := newMemFSTest(t)
-	name := "../invalid"
+	testCases := []struct {
+		caseName string
+		name     string
+		wantErr  error
+	}{
+		{
+			caseName: "invalid path",
+			name:     "../invalid",
+			wantErr:  fs.ErrInvalid,
+		}, {
+			caseName: "below an existing file",
+			name:     "dir0/file01.txt/below",
+			wantErr:  syscall.ENOTDIR,
+		}, {
+			caseName: "missing name",
+			name:     "not-found",
+			wantErr:  nil,
+		},
+	}
 
-	wantErr := &fs.PathError{Op: "RemoveAll", Path: name, Err: fs.ErrInvalid}
-	err := fsys.RemoveAll(name)
-	if err == nil {
-		t.Fatal("no error")
-	}
-	gotErr, ok := err.(*fs.PathError)
-	if !ok {
-		t.Fatalf("unexpected %v", err)
-	}
-	if gotErr.Error() != wantErr.Error() {
-		t.Errorf(`Error RemoveAll("%s") returns %v; want %v`, name, gotErr, wantErr)
+	fsys := newMemFSTest(t)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			err := fsys.RemoveAll(tc.name)
+			if tc.wantErr == nil {
+				if err != nil {
+					t.Fatalf(`Error RemoveAll("%s") returns %v; want nil`, tc.name, err)
+				}
+				return
+			}
+			wantErr := &fs.PathError{Op: "RemoveAll", Path: tc.name, Err: tc.wantErr}
+			if err == nil {
+				t.Fatal("no error")
+			}
+			gotErr, ok := err.(*fs.PathError)
+			if !ok {
+				t.Fatalf("unexpected %v", err)
+			}
+			if gotErr.Error() != wantErr.Error() {
+				t.Errorf(`Error RemoveAll("%s") returns %v; want %v`, tc.name, gotErr, wantErr)
+			}
+		})
 	}
 }
 

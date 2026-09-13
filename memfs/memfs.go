@@ -54,19 +54,24 @@ func (fsys *MemFS) rel(name string) string {
 	return strings.TrimPrefix(strings.TrimPrefix(name, fsys.dir), "/")
 }
 
-func (fsys *MemFS) open(name string) (*value, error) {
+// lookup resolves name, reporting op in any *fs.PathError it returns.
+func (fsys *MemFS) lookup(op, name string) (*value, error) {
 	if !fs.ValidPath(name) {
-		return nil, &fs.PathError{Op: "Open", Path: name, Err: fs.ErrInvalid}
+		return nil, &fs.PathError{Op: op, Path: name, Err: fs.ErrInvalid}
 	}
 	key := fsys.key(name)
 	v := fsys.store.get(key)
 	if v == nil {
 		if fsys.hasFileAncestor(key) {
-			return nil, &fs.PathError{Op: "Open", Path: name, Err: syscall.ENOTDIR}
+			return nil, &fs.PathError{Op: op, Path: name, Err: syscall.ENOTDIR}
 		}
-		return nil, &fs.PathError{Op: "Open", Path: name, Err: fs.ErrNotExist}
+		return nil, &fs.PathError{Op: op, Path: name, Err: fs.ErrNotExist}
 	}
 	return v, nil
+}
+
+func (fsys *MemFS) open(name string) (*value, error) {
+	return fsys.lookup("Open", name)
 }
 
 // hasFileAncestor reports whether the nearest existing ancestor of key is a
@@ -278,6 +283,7 @@ func (fsys *MemFS) WriteFile(name string, p []byte, mode fs.FileMode) (int, erro
 // Rename renames oldpath to newpath. The move happens atomically under the
 // filesystem mutex. Rename currently supports files only; renaming a directory
 // returns a PathError. If newpath already exists as a file it is replaced.
+// The parent directory of newpath must exist, as on osfs.
 func (fsys *MemFS) Rename(oldpath, newpath string) error {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
@@ -289,42 +295,51 @@ func (fsys *MemFS) Rename(oldpath, newpath string) error {
 		return &fs.PathError{Op: "Rename", Path: newpath, Err: fs.ErrInvalid}
 	}
 
-	oldKey := fsys.key(oldpath)
-	v := fsys.store.get(oldKey)
-	if v == nil {
-		if fsys.hasFileAncestor(oldKey) {
-			return &fs.PathError{Op: "Rename", Path: oldpath, Err: syscall.ENOTDIR}
-		}
-		return &fs.PathError{Op: "Rename", Path: oldpath, Err: fs.ErrNotExist}
+	v, err := fsys.lookup("Rename", oldpath)
+	if err != nil {
+		return err
 	}
 	if v.isDir {
 		return &fs.PathError{Op: "Rename", Path: oldpath, Err: fs.ErrInvalid}
 	}
 
-	if err := fsys.mkdirAll(path.Dir(newpath), v.mode); err != nil {
-		return err
+	parentKey := fsys.key(path.Dir(newpath))
+	parent := fsys.store.get(parentKey)
+	if parent == nil {
+		if fsys.hasFileAncestor(parentKey) {
+			return &fs.PathError{Op: "Rename", Path: newpath, Err: syscall.ENOTDIR}
+		}
+		return &fs.PathError{Op: "Rename", Path: newpath, Err: fs.ErrNotExist}
+	}
+	if !parent.isDir {
+		return &fs.PathError{Op: "Rename", Path: newpath, Err: syscall.ENOTDIR}
 	}
 	newKey := fsys.key(newpath)
 	if existing := fsys.store.get(newKey); existing != nil && existing.isDir {
-		return &fs.PathError{Op: "Rename", Path: newpath, Err: fs.ErrInvalid}
+		return &fs.PathError{Op: "Rename", Path: newpath, Err: syscall.EEXIST}
 	}
 
-	fsys.store.remove(oldKey)
+	fsys.store.remove(fsys.key(oldpath))
 	v.name = path.Base(newpath)
 	fsys.store.put(newKey, v)
 	return nil
 }
 
-// RemoveFile removes the specified named file.
+// RemoveFile removes the specified named file. An empty directory is removed
+// too; a non-empty one returns ENOTEMPTY, as on osfs.
 func (fsys *MemFS) RemoveFile(name string) error {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
 
-	if !fs.ValidPath(name) {
-		return &fs.PathError{Op: "RemoveFile", Path: name, Err: fs.ErrInvalid}
+	v, err := fsys.lookup("RemoveFile", name)
+	if err != nil {
+		return err
 	}
-
-	fsys.store.remove(fsys.key(name))
+	key := fsys.key(name)
+	if v.isDir && len(fsys.store.prefixKeys(key)) > 0 {
+		return &fs.PathError{Op: "RemoveFile", Path: name, Err: errNotEmpty}
+	}
+	fsys.store.remove(key)
 	return nil
 }
 
@@ -337,8 +352,15 @@ func (fsys *MemFS) RemoveAll(path string) error {
 	if !fs.ValidPath(path) {
 		return &fs.PathError{Op: "RemoveAll", Path: path, Err: fs.ErrInvalid}
 	}
-
-	fsys.store.removeAll(fsys.key(path))
+	key := fsys.key(path)
+	if fsys.store.get(key) == nil {
+		if fsys.hasFileAncestor(key) {
+			return &fs.PathError{Op: "RemoveAll", Path: path, Err: syscall.ENOTDIR}
+		}
+		// A missing name is not an error, as in os.RemoveAll.
+		return nil
+	}
+	fsys.store.removeAll(key)
 	return nil
 }
 
