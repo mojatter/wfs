@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/mojatter/wfs"
 	"github.com/mojatter/wfs/wfstest"
@@ -949,6 +950,160 @@ func TestValueNameIsBaseSegment(t *testing.T) {
 			}
 			if v.name != tc.want {
 				t.Errorf(`Error store.get("%s").name is "%s"; want "%s"`, tc.key, v.name, tc.want)
+			}
+		})
+	}
+}
+
+func TestModTime(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		setup    func(fsys *MemFS) error
+		name     string
+	}{
+		{
+			caseName: "WriteFile",
+			setup: func(fsys *MemFS) error {
+				_, err := fsys.WriteFile("a.txt", []byte("x"), fs.ModePerm)
+				return err
+			},
+			name: "a.txt",
+		},
+		{
+			caseName: "CreateFile",
+			setup: func(fsys *MemFS) error {
+				f, err := fsys.CreateFile("a.txt", fs.ModePerm)
+				if err != nil {
+					return err
+				}
+				return f.Close()
+			},
+			name: "a.txt",
+		},
+		{
+			caseName: "MkdirAll",
+			setup: func(fsys *MemFS) error {
+				return fsys.MkdirAll("dir/sub", fs.ModePerm)
+			},
+			name: "dir/sub",
+		},
+		{
+			caseName: "implicit parent",
+			setup: func(fsys *MemFS) error {
+				_, err := fsys.WriteFile("dir/a.txt", []byte("x"), fs.ModePerm)
+				return err
+			},
+			name: "dir",
+		},
+		{
+			caseName: "root",
+			setup: func(fsys *MemFS) error {
+				_, err := fsys.WriteFile("a.txt", []byte("x"), fs.ModePerm)
+				return err
+			},
+			name: ".",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			fsys := New()
+			before := time.Now()
+			if err := tc.setup(fsys); err != nil {
+				t.Fatal(err)
+			}
+			info, err := fsys.Stat(tc.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := info.ModTime(); got.Before(before) || got.After(time.Now()) {
+				t.Errorf("ModTime %v; want between %v and now", got, before)
+			}
+		})
+	}
+}
+
+func TestModTime_Updates(t *testing.T) {
+	fsys := New()
+	if _, err := fsys.WriteFile("a.txt", []byte("x"), fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	first, err := fsys.Stat("a.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstModTime := first.ModTime()
+
+	time.Sleep(time.Millisecond)
+	if _, err := fsys.WriteFile("a.txt", []byte("y"), fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	written, err := fsys.Stat("a.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writtenModTime := written.ModTime()
+	if !writtenModTime.After(firstModTime) {
+		t.Errorf("ModTime after WriteFile %v; want after %v", writtenModTime, firstModTime)
+	}
+
+	time.Sleep(time.Millisecond)
+	if err := fsys.Rename("a.txt", "b.txt"); err != nil {
+		t.Fatal(err)
+	}
+	renamed, err := fsys.Stat("b.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !renamed.ModTime().Equal(writtenModTime) {
+		t.Errorf("ModTime after Rename %v; want %v", renamed.ModTime(), writtenModTime)
+	}
+}
+
+func TestStatAndReadDirReturnSnapshots(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		info     func(fsys *MemFS) (fs.FileInfo, error)
+	}{
+		{
+			caseName: "Stat",
+			info: func(fsys *MemFS) (fs.FileInfo, error) {
+				return fsys.Stat("a.txt")
+			},
+		},
+		{
+			caseName: "ReadDir",
+			info: func(fsys *MemFS) (fs.FileInfo, error) {
+				entries, err := fsys.ReadDir(".")
+				if err != nil {
+					return nil, err
+				}
+				return entries[0].Info()
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			fsys := New()
+			if _, err := fsys.WriteFile("a.txt", []byte("x"), fs.ModePerm); err != nil {
+				t.Fatal(err)
+			}
+			info, err := tc.info(fsys)
+			if err != nil {
+				t.Fatal(err)
+			}
+			name, size, modTime := info.Name(), info.Size(), info.ModTime()
+
+			time.Sleep(time.Millisecond)
+			if _, err := fsys.WriteFile("a.txt", []byte("xyz"), fs.ModePerm); err != nil {
+				t.Fatal(err)
+			}
+			if err := fsys.Rename("a.txt", "b.txt"); err != nil {
+				t.Fatal(err)
+			}
+
+			if info.Name() != name || info.Size() != size || !info.ModTime().Equal(modTime) {
+				t.Errorf("held FileInfo changed to (%q, %d, %v); want (%q, %d, %v)",
+					info.Name(), info.Size(), info.ModTime(), name, size, modTime)
 			}
 		})
 	}
