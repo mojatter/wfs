@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.7.0]
 
-A behavior-convergence release, continuing v0.6.0. Four memfs
-operations silently succeeded where osfs reports an error; they now
-report it. No public API changes, but every change below turns a
-success into an error, or an incomplete removal into a complete one —
-see Changed.
+A behavior-convergence release, continuing v0.6.0. Three memfs
+operations (`RemoveFile`, `RemoveAll`, `Rename`) silently succeeded
+where osfs reports an error; they now report it. One error kind
+changes, and two removals that left the store inconsistent are fixed.
+No public API changes — read Changed before upgrading.
 
 ### Changed
 
@@ -32,28 +32,26 @@ see Changed.
   `Rename` is therefore a no-op again; the parents it created used to
   survive when a later check failed (#27).
 - memfs: `Rename` onto an existing directory now returns `EEXIST`
-  instead of `fs.ErrInvalid`, matching osfs. This comes from
-  `os.Rename`'s own check rather than the platform `rename(2)` errno,
-  so the two backends agree on every OS (#27).
-- memfs: `RemoveAll(".")` now removes the root of the filesystem
-  itself, as `osfs.RemoveAll(".")` removes its host directory. `Stat`
-  reports `fs.ErrNotExist` afterwards and the next write recreates the
-  root (#26).
+  instead of `fs.ErrInvalid`, matching osfs on Unix, where `os.Rename`
+  checks the destination itself before reaching `rename(2)` (#27).
 
 ### Fixed
 
 - memfs: `RemoveAll(".")` left every descendant in the store. The
   child prefix was built as `//` at the root, which matches no key, so
   only the root marker was deleted. Reads of the orphans still
-  succeeded while the root reported not-exist (#26).
+  succeeded while the root reported not-exist. The root itself is
+  removed, as before and as on osfs; the next write recreates it (#26).
 - memfs: a directory removed by `RemoveFile` left its children in the
   store, unreachable. They no longer appeared in `ReadDir` but were
   still readable, and `RemoveAll` could not reclaim them because it
   bails when the directory key is gone (#32).
 - memfs: `value.name` held the full store key for files and the base
-  segment for directories. `Name()` hid the difference, so nothing was
-  caller-visible, but any other reader of the field got one of two
-  shapes. It is now the base segment for both (#24).
+  segment for directories. `Name()` hid the difference on Unix, but on
+  Windows it also split the name on `\`, which `fs.ValidPath` allows,
+  so an entry written as `a\b.txt` was reported as `b.txt`. The field
+  is now the base segment for both, and `Name()` returns it as written
+  (#24).
 
 ### Deprecated
 
