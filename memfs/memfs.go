@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/mojatter/wfs"
 )
@@ -117,7 +118,7 @@ func (fsys *MemFS) mkdirAll(dir string, mode fs.FileMode) error {
 		if k == "" {
 			k = "."
 		}
-		v := &value{name: k, mode: mode | fs.ModeDir, isDir: true}
+		v := &value{name: k, mode: mode | fs.ModeDir, modTime: time.Now(), isDir: true}
 		fsys.store.put(key, v)
 	}
 	return nil
@@ -134,7 +135,7 @@ func (fsys *MemFS) create(name string, mode fs.FileMode) (*value, error) {
 	key := fsys.key(name)
 	v := fsys.store.get(key)
 	if v == nil {
-		v = &value{name: path.Base(name), mode: mode}
+		v = &value{name: path.Base(name), mode: mode, modTime: time.Now()}
 		fsys.store.put(key, v)
 	} else if v.isDir {
 		return nil, &fs.PathError{Op: "Create", Path: name, Err: syscall.EISDIR}
@@ -277,6 +278,7 @@ func (fsys *MemFS) WriteFile(name string, p []byte, mode fs.FileMode) (int, erro
 		return 0, err
 	}
 	v.data = make([]byte, len(p))
+	v.modTime = time.Now()
 	return copy(v.data, p), nil
 }
 
