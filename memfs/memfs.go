@@ -200,7 +200,7 @@ func (fsys *MemFS) ReadDir(dir string) ([]fs.DirEntry, error) {
 	keys := fsys.store.prefixKeys(prefix)
 	var dirEntries []fs.DirEntry
 	for _, key := range keys {
-		dirEntries = append(dirEntries, fsys.store.get(key))
+		dirEntries = append(dirEntries, fsys.store.get(key).snapshot())
 	}
 	return dirEntries, nil
 }
@@ -228,7 +228,11 @@ func (fsys *MemFS) Stat(name string) (fs.FileInfo, error) {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
 
-	return fsys.openRooted(name)
+	v, err := fsys.openRooted(name)
+	if err != nil {
+		return nil, err
+	}
+	return v.snapshot(), nil
 }
 
 // Sub returns an FS corresponding to the subtree rooted at dir.

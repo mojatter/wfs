@@ -57,6 +57,13 @@ func (v *value) Info() (fs.FileInfo, error) {
 	return v, nil
 }
 
+// snapshot returns a copy detached from later in-place updates. data may be
+// shared because writers replace the slice rather than modifying it.
+func (v *value) snapshot() *value {
+	c := *v
+	return &c
+}
+
 // Store represents an in-memory key value store.
 // store.keys is always sorted.
 //

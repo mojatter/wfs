@@ -1058,3 +1058,53 @@ func TestModTime_Updates(t *testing.T) {
 		t.Errorf("ModTime after Rename %v; want %v", renamed.ModTime(), writtenModTime)
 	}
 }
+
+func TestStatAndReadDirReturnSnapshots(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		info     func(fsys *MemFS) (fs.FileInfo, error)
+	}{
+		{
+			caseName: "Stat",
+			info: func(fsys *MemFS) (fs.FileInfo, error) {
+				return fsys.Stat("a.txt")
+			},
+		},
+		{
+			caseName: "ReadDir",
+			info: func(fsys *MemFS) (fs.FileInfo, error) {
+				entries, err := fsys.ReadDir(".")
+				if err != nil {
+					return nil, err
+				}
+				return entries[0].Info()
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			fsys := New()
+			if _, err := fsys.WriteFile("a.txt", []byte("x"), fs.ModePerm); err != nil {
+				t.Fatal(err)
+			}
+			info, err := tc.info(fsys)
+			if err != nil {
+				t.Fatal(err)
+			}
+			name, size, modTime := info.Name(), info.Size(), info.ModTime()
+
+			time.Sleep(time.Millisecond)
+			if _, err := fsys.WriteFile("a.txt", []byte("xyz"), fs.ModePerm); err != nil {
+				t.Fatal(err)
+			}
+			if err := fsys.Rename("a.txt", "b.txt"); err != nil {
+				t.Fatal(err)
+			}
+
+			if info.Name() != name || info.Size() != size || !info.ModTime().Equal(modTime) {
+				t.Errorf("held FileInfo changed to (%q, %d, %v); want (%q, %d, %v)",
+					info.Name(), info.Size(), info.ModTime(), name, size, modTime)
+			}
+		})
+	}
+}
