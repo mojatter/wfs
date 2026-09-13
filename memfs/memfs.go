@@ -337,7 +337,7 @@ func (fsys *MemFS) RemoveFile(name string) error {
 	}
 	key := fsys.key(name)
 	if v.isDir && len(fsys.store.prefixKeys(key)) > 0 {
-		return &fs.PathError{Op: "RemoveFile", Path: name, Err: syscall.ENOTEMPTY}
+		return &fs.PathError{Op: "RemoveFile", Path: name, Err: errNotEmpty}
 	}
 	fsys.store.remove(key)
 	return nil

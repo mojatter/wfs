@@ -638,7 +638,7 @@ func TestRemoveFile_Errors(t *testing.T) {
 		}, {
 			caseName: "non-empty directory",
 			name:     "dir0",
-			wantErr:  syscall.ENOTEMPTY,
+			wantErr:  errNotEmpty,
 		},
 	}
 
