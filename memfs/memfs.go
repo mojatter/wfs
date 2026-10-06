@@ -376,29 +376,23 @@ func (fsys *MemFS) RemoveAll(path string) error {
 
 // MemFile represents an in-memory file.
 // MemFile implements fs.File, fs.ReadDirFile, wfs.WriterFile and
-// wfs.SyncWriterFile. A file from Open is read-only and Write fails with
-// EBADF, as on osfs; only a file from CreateFile accepts writes.
-// CreateFile truncates an existing file at once, as on osfs; a file opened
-// before it keeps reading the bytes it opened.
-// Read on a file from CreateFile returns io.EOF, as on osfs.
-// Stat describes the entry as opened or created, sized to the bytes written.
-// After Close every method fails with fs.ErrClosed, as on osfs.
+// wfs.SyncWriterFile. wfstest.TestFileHandle checks the behavior it
+// shares with osfs.
 //
-// Write semantics differ from osfs and may surprise callers porting code
-// between backends:
+// Intentional differences from osfs:
 //
-//   - Writes are buffered locally on the *MemFile. They are NOT visible to
-//     other Open/Read/ReadFile calls until Close commits them into the
-//     entry CreateFile returned, so they follow a Rename and vanish after
-//     a RemoveFile, as on osfs.
-//   - Sync is a no-op. It exists only so that wfs.SyncWriterFile-aware
-//     callers (atomic-write helpers, for example) can share a single code
-//     path across osfs and memfs; on memfs the durability guarantee is
-//     vacuously satisfied because there is no underlying storage, but a
-//     successful Sync still does NOT publish the buffered bytes — only
-//     Close does.
+//   - Writes are buffered and NOT visible to other readers until Close
+//     commits them; only the truncation by CreateFile is seen at once by
+//     a later Open or ReadFile.
 //   - Concurrent writers to the same entry each operate on independent
 //     buffers; whichever written file calls Close last wins.
+//   - A file from Open reads and Stats the bytes as they were at Open, so
+//     later writes to the name, a CreateFile truncation included, do not
+//     reach it.
+//   - Sync is a no-op and does NOT publish the buffered bytes; only Close
+//     does.
+//
+// Non-goal: a single *MemFile is not safe for concurrent use.
 type MemFile struct {
 	fsys       *MemFS
 	name       string
@@ -500,9 +494,7 @@ func (f *MemFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	return f.dirEntries[f.dirIndex:end], nil
 }
 
-// Write appends the specified bytes to this file's local buffer. The
-// bytes are not published to the filesystem until Close is called. See
-// the MemFile type docs.
+// Write appends p to the buffer that Close commits.
 func (f *MemFile) Write(p []byte) (int, error) {
 	if f.closed {
 		return 0, f.errClosed("Write")
@@ -514,10 +506,7 @@ func (f *MemFile) Write(p []byte) (int, error) {
 	return f.buf.Write(p)
 }
 
-// Sync is a no-op for in-memory files. It exists so that callers using
-// wfs.SyncWriterFile to flush osfs files for crash safety can share the
-// same code path on memfs. Note that Sync does NOT publish buffered
-// writes — only Close does. See the MemFile type docs.
+// Sync is a no-op; see the MemFile type doc.
 func (f *MemFile) Sync() error {
 	if f.closed {
 		return f.errClosed("Sync")
