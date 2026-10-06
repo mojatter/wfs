@@ -106,6 +106,10 @@ behaviors differ from `osfs` and are worth knowing:
 - **Writes are visible only after `Close`.** `MemFile` buffers writes
   locally; other readers do not see the new contents until `Close`
   returns successfully. `osfs` makes writes visible immediately.
+  `CreateFile` on an existing file truncates it at once, as on `osfs`, so
+  a later `Open` or `ReadFile` sees an empty file; only the written bytes
+  wait for `Close`. A file opened before `CreateFile` keeps reading the
+  bytes it opened.
 - **`Sync` is a no-op.** It exists so that atomic-write helpers can share
   one code path across backends. On `memfs` it does *not* publish the
   buffered bytes — only `Close` does.

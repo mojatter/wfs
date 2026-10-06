@@ -265,12 +265,14 @@ func (fsys *MemFS) CreateFile(name string, mode fs.FileMode) (wfs.WriterFile, er
 	if err != nil {
 		return nil, err
 	}
+	v.data = nil // truncate at once, as O_TRUNC does
+	v.modTime = time.Now()
 	return &MemFile{
 		fsys: fsys,
 		name: name,
 		info: v.snapshot(),
 		buf:  new(bytes.Buffer),
-		mode: mode,
+		v:    v,
 	}, nil
 }
 
@@ -376,33 +378,39 @@ func (fsys *MemFS) RemoveAll(path string) error {
 // MemFile implements fs.File, fs.ReadDirFile, wfs.WriterFile and
 // wfs.SyncWriterFile. A file from Open is read-only and Write fails with
 // EBADF, as on osfs; only a file from CreateFile accepts writes.
+// CreateFile truncates an existing file at once, as on osfs; a file opened
+// before it keeps reading the bytes it opened.
 // Read on a file from CreateFile returns io.EOF, as on osfs.
 // Stat describes the entry as opened or created, sized to the bytes written.
+// After Close every method fails with fs.ErrClosed, as on osfs.
 //
 // Write semantics differ from osfs and may surprise callers porting code
 // between backends:
 //
 //   - Writes are buffered locally on the *MemFile. They are NOT visible to
-//     other Open/Read/ReadFile calls until Close returns successfully.
+//     other Open/Read/ReadFile calls until Close commits them into the
+//     entry CreateFile returned, so they follow a Rename and vanish after
+//     a RemoveFile, as on osfs.
 //   - Sync is a no-op. It exists only so that wfs.SyncWriterFile-aware
 //     callers (atomic-write helpers, for example) can share a single code
 //     path across osfs and memfs; on memfs the durability guarantee is
 //     vacuously satisfied because there is no underlying storage, but a
 //     successful Sync still does NOT publish the buffered bytes — only
 //     Close does.
-//   - Concurrent writers to the same name each operate on independent
-//     buffers; whichever calls Close last wins.
+//   - Concurrent writers to the same entry each operate on independent
+//     buffers; whichever written file calls Close last wins.
 type MemFile struct {
 	fsys       *MemFS
 	name       string
 	r          *bytes.Reader // nil unless a regular file from Open
 	buf        *bytes.Buffer // nil unless from CreateFile
 	info       *value
-	mode       fs.FileMode
+	v          *value // the stored entry a file from CreateFile commits into
 	dirRead    bool
 	dirEntries []fs.DirEntry
 	dirIndex   int
 	wrote      bool
+	closed     bool
 }
 
 var (
@@ -415,6 +423,8 @@ var (
 // Read reads bytes from this file.
 func (f *MemFile) Read(p []byte) (int, error) {
 	switch {
+	case f.closed:
+		return 0, f.errClosed("Read")
 	case f.r != nil:
 		return f.r.Read(p)
 	case f.buf != nil:
@@ -425,6 +435,9 @@ func (f *MemFile) Read(p []byte) (int, error) {
 
 // Stat returns the FileInfo taken at Open or CreateFile, sized to the bytes written.
 func (f *MemFile) Stat() (fs.FileInfo, error) {
+	if f.closed {
+		return nil, f.errClosed("Stat")
+	}
 	if f.buf == nil {
 		return f.info, nil
 	}
@@ -433,22 +446,33 @@ func (f *MemFile) Stat() (fs.FileInfo, error) {
 	return &c, nil
 }
 
-// Close closes the file. If any Write calls were made, Close commits the
-// buffered bytes to the filesystem; until Close returns successfully the
-// written content is not visible to other readers. See the MemFile type
-// docs for the full semantics.
+// Close closes the file; a written file from CreateFile commits its buffer.
 func (f *MemFile) Close() error {
-	if f.wrote {
-		var err error
-		_, err = f.fsys.WriteFile(f.name, f.buf.Bytes(), f.mode)
-		return err
+	if f.closed {
+		return f.errClosed("Close")
 	}
+	f.closed = true
 	f.dirEntries = nil
+	if !f.wrote {
+		return nil
+	}
+	f.fsys.mutex.Lock()
+	defer f.fsys.mutex.Unlock()
+
+	f.v.data = bytes.Clone(f.buf.Bytes())
+	f.v.modTime = time.Now()
 	return nil
+}
+
+func (f *MemFile) errClosed(op string) error {
+	return &fs.PathError{Op: op, Path: f.name, Err: fs.ErrClosed}
 }
 
 // ReadDir reads sub directories.
 func (f *MemFile) ReadDir(n int) ([]fs.DirEntry, error) {
+	if f.closed {
+		return nil, f.errClosed("ReadDir")
+	}
 	if !f.dirRead {
 		f.dirRead = true
 		var err error
@@ -480,10 +504,13 @@ func (f *MemFile) ReadDir(n int) ([]fs.DirEntry, error) {
 // bytes are not published to the filesystem until Close is called. See
 // the MemFile type docs.
 func (f *MemFile) Write(p []byte) (int, error) {
+	if f.closed {
+		return 0, f.errClosed("Write")
+	}
 	if f.buf == nil {
 		return 0, &fs.PathError{Op: "Write", Path: f.name, Err: syscall.EBADF}
 	}
-	f.wrote = true
+	f.wrote = f.wrote || len(p) > 0
 	return f.buf.Write(p)
 }
 
@@ -492,5 +519,8 @@ func (f *MemFile) Write(p []byte) (int, error) {
 // same code path on memfs. Note that Sync does NOT publish buffered
 // writes — only Close does. See the MemFile type docs.
 func (f *MemFile) Sync() error {
+	if f.closed {
+		return f.errClosed("Sync")
+	}
 	return nil
 }
