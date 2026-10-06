@@ -1171,15 +1171,60 @@ func TestMemFile_CreatedFile(t *testing.T) {
 	testCases := []struct {
 		caseName string
 		existing bool
+		data     string
 		change   func(fsys *MemFS) error
+		want     map[string]string // names absent from want must not exist
+		wantDir  bool              // a.txt is a directory after Close
 	}{
-		{caseName: "new"},
-		{caseName: "existing", existing: true},
+		{caseName: "new", data: "hello", want: map[string]string{"a.txt": "hello"}},
+		{caseName: "existing", existing: true, data: "hello", want: map[string]string{"a.txt": "hello"}},
+		{caseName: "existing with empty write", existing: true, want: map[string]string{"a.txt": ""}},
+		{
+			caseName: "overwritten before Close",
+			existing: true,
+			change: func(fsys *MemFS) error {
+				_, err := fsys.WriteFile("a.txt", []byte("new"), fs.ModePerm)
+				return err
+			},
+			want: map[string]string{"a.txt": "new"},
+		},
 		{
 			caseName: "removed",
+			data:     "hello",
 			change: func(fsys *MemFS) error {
 				return fsys.RemoveFile("a.txt")
 			},
+		},
+		{
+			caseName: "replaced",
+			data:     "hello",
+			change: func(fsys *MemFS) error {
+				if err := fsys.RemoveFile("a.txt"); err != nil {
+					return err
+				}
+				_, err := fsys.WriteFile("a.txt", []byte("other"), fs.ModePerm)
+				return err
+			},
+			want: map[string]string{"a.txt": "other"},
+		},
+		{
+			caseName: "replaced by directory",
+			data:     "hello",
+			change: func(fsys *MemFS) error {
+				if err := fsys.RemoveFile("a.txt"); err != nil {
+					return err
+				}
+				return fsys.MkdirAll("a.txt", fs.ModePerm)
+			},
+			wantDir: true,
+		},
+		{
+			caseName: "renamed",
+			data:     "hello",
+			change: func(fsys *MemFS) error {
+				return fsys.Rename("a.txt", "c.txt")
+			},
+			want: map[string]string{"c.txt": "hello"},
 		},
 	}
 	for _, tc := range testCases {
@@ -1194,7 +1239,10 @@ func TestMemFile_CreatedFile(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := f.Write([]byte("hello")); err != nil {
+			if b, err := fsys.ReadFile("a.txt"); err != nil || len(b) != 0 {
+				t.Errorf("ReadFile after CreateFile = (%q, %v); want empty", b, err)
+			}
+			if _, err := f.Write([]byte(tc.data)); err != nil {
 				t.Fatal(err)
 			}
 			if tc.change != nil {
@@ -1207,8 +1255,8 @@ func TestMemFile_CreatedFile(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if info.Name() != "a.txt" || info.Size() != 5 {
-				t.Errorf("Stat = (%q, %d); want (%q, 5)", info.Name(), info.Size(), "a.txt")
+			if info.Name() != "a.txt" || info.Size() != int64(len(tc.data)) {
+				t.Errorf("Stat = (%q, %d); want (%q, %d)", info.Name(), info.Size(), "a.txt", len(tc.data))
 			}
 			if n, err := f.Read(make([]byte, 2)); n != 0 || err != io.EOF {
 				t.Errorf("Read = (%d, %v); want (0, EOF)", n, err)
@@ -1216,15 +1264,102 @@ func TestMemFile_CreatedFile(t *testing.T) {
 			if err := f.Close(); err != nil {
 				t.Fatal(err)
 			}
-			if tc.change != nil {
-				return
+			for _, name := range []string{"a.txt", "c.txt"} {
+				if tc.wantDir && name == "a.txt" {
+					if info, err := fsys.Stat(name); err != nil || !info.IsDir() {
+						t.Errorf("Stat(%q) = (%v, %v); want a directory", name, info, err)
+					}
+					continue
+				}
+				b, err := fsys.ReadFile(name)
+				want, ok := tc.want[name]
+				if !ok {
+					if !errors.Is(err, fs.ErrNotExist) {
+						t.Errorf("ReadFile(%q) = (%q, %v); want ErrNotExist", name, b, err)
+					}
+					continue
+				}
+				if err != nil || string(b) != want {
+					t.Errorf("ReadFile(%q) = (%q, %v); want %q", name, b, err, want)
+				}
 			}
-			b, err := fsys.ReadFile("a.txt")
+		})
+	}
+}
+
+func TestMemFile_Closed(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		open     func(fsys *MemFS) (wfs.WriterFile, error)
+	}{
+		{
+			caseName: "file from Open",
+			open: func(fsys *MemFS) (wfs.WriterFile, error) {
+				f, err := fsys.Open("a.txt")
+				if err != nil {
+					return nil, err
+				}
+				return f.(wfs.WriterFile), nil
+			},
+		},
+		{
+			caseName: "directory from Open",
+			open: func(fsys *MemFS) (wfs.WriterFile, error) {
+				f, err := fsys.Open("d")
+				if err != nil {
+					return nil, err
+				}
+				return f.(wfs.WriterFile), nil
+			},
+		},
+		{
+			caseName: "file from CreateFile",
+			open: func(fsys *MemFS) (wfs.WriterFile, error) {
+				f, err := fsys.CreateFile("a.txt", fs.ModePerm)
+				if err != nil {
+					return nil, err
+				}
+				_, err = f.Write([]byte("hello"))
+				return f, err
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			fsys := New()
+			if _, err := fsys.WriteFile("a.txt", []byte("hello"), fs.ModePerm); err != nil {
+				t.Fatal(err)
+			}
+			if err := fsys.MkdirAll("d", fs.ModePerm); err != nil {
+				t.Fatal(err)
+			}
+			f, err := tc.open(fsys)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(b) != "hello" {
-				t.Errorf("a.txt = %q; want %q", b, "hello")
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := fsys.WriteFile("a.txt", []byte("other"), fs.ModePerm); err != nil {
+				t.Fatal(err)
+			}
+
+			_, readErr := f.Read(make([]byte, 1))
+			_, writeErr := f.Write([]byte("x"))
+			_, statErr := f.Stat()
+			_, readDirErr := f.(fs.ReadDirFile).ReadDir(-1)
+			syncErr := f.(wfs.SyncWriterFile).Sync()
+			closeErr := f.Close()
+			for op, err := range map[string]error{
+				"Read": readErr, "Write": writeErr, "Stat": statErr,
+				"ReadDir": readDirErr, "Sync": syncErr, "Close": closeErr,
+			} {
+				if !errors.Is(err, fs.ErrClosed) {
+					t.Errorf("%s after Close = %v; want ErrClosed", op, err)
+				}
+			}
+			if b, _ := fsys.ReadFile("a.txt"); string(b) != "other" {
+				t.Errorf("a.txt = %q; want %q", b, "other")
 			}
 		})
 	}
