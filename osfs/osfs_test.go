@@ -59,6 +59,45 @@ func TestFileHandle(t *testing.T) {
 	}
 }
 
+func TestCopyFS(t *testing.T) {
+	fsys := New(t.TempDir())
+	src := os.DirFS("testdata")
+	if err := wfs.CopyFS(fsys, src, "."); err != nil {
+		t.Fatal(err)
+	}
+
+	err := fs.WalkDir(src, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			info, err := fs.Stat(fsys, path)
+			if err != nil {
+				return err
+			}
+			if info.Mode().Perm()&0o700 != 0o700 {
+				t.Errorf("%s mode = %v; want a directory with owner rwx", path, info.Mode())
+			}
+			return nil
+		}
+		want, err := fs.ReadFile(src, path)
+		if err != nil {
+			return err
+		}
+		got, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return err
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s = %q; want %q", path, got, want)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSyncWriterFile(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {

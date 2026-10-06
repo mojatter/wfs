@@ -260,6 +260,12 @@ func TestCopyFS(t *testing.T) {
 
 	got := map[string][]byte{}
 	dest := DelegateFS(os.DirFS(tmpDir))
+	dest.MkdirAllFunc = func(dir string, mode fs.FileMode) error {
+		if mode != fs.ModePerm {
+			t.Errorf("%s: mode = %v; want %v", dir, mode, fs.ModePerm)
+		}
+		return nil
+	}
 	dest.CreateFileFunc = func(name string, mode fs.FileMode) (WriterFile, error) {
 		if mode != 0o666 {
 			t.Errorf("%s: mode = %v; want %v", name, mode, fs.FileMode(0o666))
