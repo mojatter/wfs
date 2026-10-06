@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"testing/fstest"
 )
 
 func TestMkdirAll(t *testing.T) {
@@ -362,5 +363,46 @@ func TestWalkDir(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCopyFS_CloseError(t *testing.T) {
+	writeErr := errors.New("write")
+	closeErr := errors.New("close")
+	testCases := []struct {
+		caseName string
+		writeErr error
+		closeErr error
+		wantErrs []error
+	}{
+		{caseName: "Close fails", closeErr: closeErr, wantErrs: []error{closeErr}},
+		{caseName: "Write fails", writeErr: writeErr, wantErrs: []error{writeErr}},
+		{caseName: "Write and Close fail", writeErr: writeErr, closeErr: closeErr, wantErrs: []error{writeErr, closeErr}},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			closed := false
+			dest := DelegateFS(fstest.MapFS{})
+			dest.CreateFileFunc = func(string, fs.FileMode) (WriterFile, error) {
+				return &FileDelegator{
+					WriteFunc: func(p []byte) (int, error) { return len(p), tc.writeErr },
+					CloseFunc: func() error { closed = true; return tc.closeErr },
+				}, nil
+			}
+
+			err := CopyFS(dest, fstest.MapFS{"a.txt": {Data: []byte("x")}}, ".")
+			for _, want := range tc.wantErrs {
+				if !errors.Is(err, want) {
+					t.Errorf("CopyFS = %v; want %v", err, want)
+				}
+			}
+			// A Write error alone must come back unwrapped.
+			if tc.closeErr == nil && err != tc.writeErr {
+				t.Errorf("CopyFS = %#v; want %v unchanged", err, tc.writeErr)
+			}
+			if !closed {
+				t.Error("Close not called")
+			}
+		})
 	}
 }

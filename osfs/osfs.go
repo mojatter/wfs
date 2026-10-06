@@ -2,6 +2,7 @@
 package osfs
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -138,9 +139,11 @@ func (fsys *OSFS) WriteFile(name string, p []byte, mode fs.FileMode) (int, error
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
-
-	return f.Write(p)
+	n, err := f.Write(p)
+	if cerr := f.Close(); cerr != nil {
+		err = errors.Join(err, cerr)
+	}
+	return n, err
 }
 
 // RemoveFile removes the specified named file.
