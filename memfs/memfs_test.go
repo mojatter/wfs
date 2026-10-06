@@ -55,6 +55,17 @@ func TestRenameFS(t *testing.T) {
 	}
 }
 
+func TestFileHandle(t *testing.T) {
+	fsys := New()
+	tmpdir := "tmpdir"
+	if err := fsys.MkdirAll(tmpdir, fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	if err := wfstest.TestFileHandle(fsys, tmpdir); err != nil {
+		t.Errorf(`Error wfs/wfstest: %+v`, err)
+	}
+}
+
 func TestSubSharesMutex(t *testing.T) {
 	fsys := New()
 	if err := fsys.MkdirAll("sub", fs.ModePerm); err != nil {

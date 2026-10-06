@@ -100,19 +100,14 @@ func atomicWrite(fsys fs.FS, name string, src io.Reader) error {
 
 ## memfs limitations
 
-`memfs` is intended for tests and small in-process workflows. A few
-behaviors differ from `osfs` and are worth knowing:
+`memfs` is intended for tests and small in-process workflows. Its file
+handles behave as on `osfs` where `wfstest.TestFileHandle` checks them;
+the intentional differences — writes visible only after `Close`, the
+last written file's `Close` wins, a file from `Open` keeps the bytes it
+opened, and `Sync` is a no-op — are listed in the
+[`MemFile` docs](https://pkg.go.dev/github.com/mojatter/wfs/memfs#MemFile).
+In addition:
 
-- **Writes are visible only after `Close`.** `MemFile` buffers writes
-  locally; other readers do not see the new contents until `Close`
-  returns successfully. `osfs` makes writes visible immediately.
-  `CreateFile` on an existing file truncates it at once, as on `osfs`, so
-  a later `Open` or `ReadFile` sees an empty file; only the written bytes
-  wait for `Close`. A file opened before `CreateFile` keeps reading the
-  bytes it opened.
-- **`Sync` is a no-op.** It exists so that atomic-write helpers can share
-  one code path across backends. On `memfs` it does *not* publish the
-  buffered bytes — only `Close` does.
 - **`Rename` supports files only.** Renaming a directory currently
   returns a `*fs.PathError`. `osfs.Rename` delegates to `os.Rename` and
   therefore handles directories on POSIX systems.

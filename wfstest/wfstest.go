@@ -2,7 +2,9 @@
 package wfstest
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"strings"
 	"testing/iotest"
@@ -123,6 +125,310 @@ func TestRenameFS(fsys fs.FS, tmpDir string) error {
 
 	if err := wfs.RemoveFile(fsys, dst); err != nil {
 		return fmt.Errorf("RemoveFile %s: %v", dst, err)
+	}
+	return nil
+}
+
+// TestFileHandle tests that open files behave as on a POSIX OS: Write from
+// Open, CreateFile truncation, writes across Rename and RemoveFile, and use
+// after Close. It assumes wfs.WriteFileFS, wfs.RemoveFileFS and wfs.RenameFS;
+// tmpDir is a directory it may freely create and destroy entries under.
+func TestFileHandle(fsys fs.FS, tmpDir string) error {
+	testCases := []struct {
+		caseName string
+		run      func(dir string) error
+	}{
+		{
+			caseName: "Write on a file from Open fails",
+			run: func(dir string) error {
+				return checkOpenedWrite(fsys, dir+"/a.txt", false)
+			},
+		},
+		{
+			caseName: "Write on a directory from Open fails",
+			run: func(dir string) error {
+				return checkOpenedWrite(fsys, dir+"/d", true)
+			},
+		},
+		{
+			caseName: "Read and Stat on a file from CreateFile",
+			run: func(dir string) error {
+				f, err := createAndWrite(fsys, dir+"/a.txt", "hello")
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+
+				if n, err := f.Read(make([]byte, 2)); n != 0 || err != io.EOF {
+					return fmt.Errorf("read = (%d, %v); want (0, EOF)", n, err)
+				}
+				info, err := f.Stat()
+				if err != nil {
+					return fmt.Errorf("stat: %v", err)
+				}
+				if info.Name() != "a.txt" || info.Size() != 5 {
+					return fmt.Errorf("stat = (%q, %d); want (%q, 5)", info.Name(), info.Size(), "a.txt")
+				}
+				return nil
+			},
+		},
+		{
+			caseName: "CreateFile truncates an existing file",
+			run: func(dir string) error {
+				name := dir + "/a.txt"
+				if _, err := wfs.WriteFile(fsys, name, []byte("old content"), fs.ModePerm); err != nil {
+					return fmt.Errorf("write file: %v", err)
+				}
+				f, err := wfs.CreateFile(fsys, name, fs.ModePerm)
+				if err != nil {
+					return fmt.Errorf("create: %v", err)
+				}
+				if err := checkContent(fsys, name, ""); err != nil {
+					_ = f.Close()
+					return fmt.Errorf("before Close: %v", err)
+				}
+				if err := f.Close(); err != nil {
+					return fmt.Errorf("close: %v", err)
+				}
+				return checkContent(fsys, name, "")
+			},
+		},
+		{
+			caseName: "Close without a write keeps later content",
+			run: func(dir string) error {
+				name := dir + "/a.txt"
+				f, err := createAndWrite(fsys, name, "")
+				if err != nil {
+					return err
+				}
+				if _, err := wfs.WriteFile(fsys, name, []byte("new"), fs.ModePerm); err != nil {
+					_ = f.Close()
+					return fmt.Errorf("write file: %v", err)
+				}
+				if err := f.Close(); err != nil {
+					return fmt.Errorf("close: %v", err)
+				}
+				return checkContent(fsys, name, "new")
+			},
+		},
+		{
+			caseName: "Write follows Rename",
+			run: func(dir string) error {
+				return checkWriteAcross(fsys, dir, func() error {
+					return wfs.Rename(fsys, dir+"/a.txt", dir+"/c.txt")
+				}, map[string]string{"c.txt": "hello"})
+			},
+		},
+		{
+			caseName: "Write vanishes after RemoveFile",
+			run: func(dir string) error {
+				return checkWriteAcross(fsys, dir, func() error {
+					return wfs.RemoveFile(fsys, dir+"/a.txt")
+				}, nil)
+			},
+		},
+		{
+			caseName: "Write vanishes after Rename onto its name",
+			run: func(dir string) error {
+				return checkWriteAcross(fsys, dir, func() error {
+					if _, err := wfs.WriteFile(fsys, dir+"/b.txt", []byte("other"), fs.ModePerm); err != nil {
+						return err
+					}
+					return wfs.Rename(fsys, dir+"/b.txt", dir+"/a.txt")
+				}, map[string]string{"a.txt": "other"})
+			},
+		},
+		{
+			caseName: "Write vanishes after RemoveAll of its parent",
+			run: func(dir string) error {
+				sub := dir + "/sub"
+				if err := checkWriteAcross(fsys, sub, func() error {
+					return wfs.RemoveAll(fsys, sub)
+				}, nil); err != nil {
+					return err
+				}
+				if _, err := fs.Stat(fsys, sub); !errors.Is(err, fs.ErrNotExist) {
+					return fmt.Errorf("stat %s: got %v; want ErrNotExist", sub, err)
+				}
+				return nil
+			},
+		},
+		{
+			caseName: "file from Open after RemoveFile",
+			run: func(dir string) error {
+				name := dir + "/a.txt"
+				if _, err := wfs.WriteFile(fsys, name, []byte("hello"), fs.ModePerm); err != nil {
+					return fmt.Errorf("write file: %v", err)
+				}
+				f, err := fsys.Open(name)
+				if err != nil {
+					return fmt.Errorf("open: %v", err)
+				}
+				defer f.Close()
+
+				if err := wfs.RemoveFile(fsys, name); err != nil {
+					return fmt.Errorf("remove: %v", err)
+				}
+				info, err := f.Stat()
+				if err != nil || info.Size() != 5 {
+					return fmt.Errorf("stat = (%v, %v); want size 5", info, err)
+				}
+				b, err := io.ReadAll(f)
+				if err != nil || string(b) != "hello" {
+					return fmt.Errorf("read all = (%q, %v); want %q", b, err, "hello")
+				}
+				return nil
+			},
+		},
+		{
+			caseName: "methods fail after Close",
+			run: func(dir string) error {
+				name := dir + "/a.txt"
+				w, err := createAndWrite(fsys, name, "hello")
+				if err != nil {
+					return err
+				}
+				if err := w.Close(); err != nil {
+					return fmt.Errorf("close: %v", err)
+				}
+				r, err := fsys.Open(name)
+				if err != nil {
+					return fmt.Errorf("open: %v", err)
+				}
+				if err := r.Close(); err != nil {
+					return fmt.Errorf("close: %v", err)
+				}
+				if err := wfs.MkdirAll(fsys, dir+"/d", fs.ModePerm); err != nil {
+					return fmt.Errorf("mkdir: %v", err)
+				}
+				d, err := fsys.Open(dir + "/d")
+				if err != nil {
+					return fmt.Errorf("open: %v", err)
+				}
+				if err := d.Close(); err != nil {
+					return fmt.Errorf("close: %v", err)
+				}
+
+				_, writeErr := w.Write([]byte("x"))
+				_, readErr := r.Read(make([]byte, 1))
+				_, statErr := r.Stat()
+				ops := map[string]error{
+					"Write": writeErr, "Read": readErr, "Stat": statErr,
+					"Close of a file from CreateFile": w.Close(), "Close of a file from Open": r.Close(),
+				}
+				if s, ok := w.(wfs.SyncWriterFile); ok {
+					ops["Sync"] = s.Sync()
+				}
+				for op, err := range ops {
+					if !errors.Is(err, fs.ErrClosed) {
+						return fmt.Errorf("%s after Close = %v; want ErrClosed", op, err)
+					}
+				}
+				if rd, ok := d.(fs.ReadDirFile); ok {
+					// osfs reports "use of closed file" here rather than fs.ErrClosed.
+					if _, err := rd.ReadDir(-1); err == nil {
+						return fmt.Errorf("read dir after Close returns no error")
+					}
+				}
+				return checkContent(fsys, name, "hello")
+			},
+		},
+	}
+	for i, tc := range testCases {
+		dir := fmt.Sprintf("%s/handle%d", tmpDir, i)
+		if err := wfs.MkdirAll(fsys, dir, fs.ModePerm); err != nil {
+			return fmt.Errorf("%s: MkdirAll: %v", tc.caseName, err)
+		}
+		if err := tc.run(dir); err != nil {
+			return fmt.Errorf("%s: %v", tc.caseName, err)
+		}
+		if err := wfs.RemoveAll(fsys, dir); err != nil {
+			return fmt.Errorf("%s: RemoveAll: %v", tc.caseName, err)
+		}
+	}
+	return nil
+}
+
+func checkOpenedWrite(fsys fs.FS, name string, isDir bool) error {
+	var err error
+	if isDir {
+		err = wfs.MkdirAll(fsys, name, fs.ModePerm)
+	} else {
+		_, err = wfs.WriteFile(fsys, name, []byte("hello"), fs.ModePerm)
+	}
+	if err != nil {
+		return fmt.Errorf("create %s: %v", name, err)
+	}
+	f, err := fsys.Open(name)
+	if err != nil {
+		return fmt.Errorf("open: %v", err)
+	}
+	if w, ok := f.(io.Writer); ok {
+		if _, err := w.Write([]byte("XY")); err == nil {
+			_ = f.Close()
+			return fmt.Errorf("write returns no error")
+		}
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close: %v", err)
+	}
+	if isDir {
+		return nil
+	}
+	return checkContent(fsys, name, "hello")
+}
+
+func createAndWrite(fsys fs.FS, name, data string) (wfs.WriterFile, error) {
+	f, err := wfs.CreateFile(fsys, name, fs.ModePerm)
+	if err != nil {
+		return nil, fmt.Errorf("create: %v", err)
+	}
+	if _, err := f.Write([]byte(data)); err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("write: %v", err)
+	}
+	return f, nil
+}
+
+// checkWriteAcross writes dir/a.txt, runs change, closes it, and checks a.txt and c.txt against want.
+func checkWriteAcross(fsys fs.FS, dir string, change func() error, want map[string]string) error {
+	if err := wfs.MkdirAll(fsys, dir, fs.ModePerm); err != nil {
+		return fmt.Errorf("mkdir: %v", err)
+	}
+	f, err := createAndWrite(fsys, dir+"/a.txt", "hello")
+	if err != nil {
+		return err
+	}
+	if err := change(); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("change: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close: %v", err)
+	}
+	for _, base := range []string{"a.txt", "c.txt"} {
+		name := dir + "/" + base
+		w, ok := want[base]
+		if !ok {
+			if _, err := fs.Stat(fsys, name); !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("stat %s: got %v; want ErrNotExist", name, err)
+			}
+			continue
+		}
+		if err := checkContent(fsys, name, w); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkContent(fsys fs.FS, name, want string) error {
+	b, err := wfs.ReadFile(fsys, name)
+	if err != nil {
+		return fmt.Errorf("read %s: %v", name, err)
+	}
+	if string(b) != want {
+		return fmt.Errorf("read %s: got %q; want %q", name, b, want)
 	}
 	return nil
 }
