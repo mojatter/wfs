@@ -110,7 +110,7 @@ func Rename(fsys fs.FS, oldpath, newpath string) error {
 
 // CopyFS walks the specified root directory on src and copies directories and
 // files to dest filesystem.
-// Directories get fs.ModePerm and files 0o666 (before umask); source modes are not preserved.
+// Directories get fs.ModePerm and files 0o666 plus their source permission bits, before umask.
 // Symlinks are resolved with fs.Stat; non-regular targets and entries fail with fs.ErrInvalid.
 func CopyFS(dest, src fs.FS, root string) error {
 	return fs.WalkDir(src, root, func(path string, d fs.DirEntry, err error) error {
@@ -120,15 +120,16 @@ func CopyFS(dest, src fs.FS, root string) error {
 		if d.IsDir() {
 			return MkdirAll(dest, path, fs.ModePerm)
 		}
-		typ := d.Type()
-		if typ&fs.ModeSymlink != 0 {
-			info, err := fs.Stat(src, path)
-			if err != nil {
-				return err
-			}
-			typ = info.Mode().Type()
+		var info fs.FileInfo
+		if d.Type()&fs.ModeSymlink != 0 {
+			info, err = fs.Stat(src, path)
+		} else {
+			info, err = d.Info()
 		}
-		if !typ.IsRegular() {
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
 			return &fs.PathError{Op: "CopyFS", Path: path, Err: fs.ErrInvalid}
 		}
 		srcFile, err := src.Open(path)
@@ -137,7 +138,7 @@ func CopyFS(dest, src fs.FS, root string) error {
 		}
 		defer srcFile.Close()
 
-		destFile, err := CreateFile(dest, path, 0o666)
+		destFile, err := CreateFile(dest, path, 0o666|info.Mode().Perm())
 		if err != nil {
 			return err
 		}

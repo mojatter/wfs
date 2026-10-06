@@ -451,8 +451,10 @@ func TestCopyFS_Symlink(t *testing.T) {
 		t.Skipf("symlink not supported: %v", err)
 	}
 	got := map[string][]byte{}
+	modes := map[string]fs.FileMode{}
 	dest := DelegateFS(fstest.MapFS{})
 	dest.CreateFileFunc = func(name string, mode fs.FileMode) (WriterFile, error) {
+		modes[name] = mode
 		return &FileDelegator{WriteFunc: func(p []byte) (int, error) {
 			got[name] = append(got[name], p...)
 			return len(p), nil
@@ -465,11 +467,47 @@ func TestCopyFS_Symlink(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("copied %v; want %v", got, want)
 	}
+	// The link takes the target's permission bits, not its own.
+	if modes["link"] != 0o666 {
+		t.Errorf("link mode = %v; want %v", modes["link"], fs.FileMode(0o666))
+	}
 
 	if err := os.Symlink("missing", filepath.Join(dir, "broken")); err != nil {
 		t.Fatal(err)
 	}
 	if err := CopyFS(dest, os.DirFS(dir), "."); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("CopyFS with broken symlink = %v; want ErrNotExist", err)
+	}
+}
+
+func TestCopyFS_Mode(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		perm     fs.FileMode
+		want     fs.FileMode
+	}{
+		{caseName: "no permission bits", perm: 0, want: 0o666},
+		{caseName: "owner only", perm: 0o600, want: 0o666},
+		{caseName: "readable", perm: 0o644, want: 0o666},
+		{caseName: "executable", perm: 0o755, want: 0o777},
+		{caseName: "owner executable", perm: 0o700, want: 0o766},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			var got fs.FileMode
+			dest := DelegateFS(fstest.MapFS{})
+			dest.CreateFileFunc = func(_ string, mode fs.FileMode) (WriterFile, error) {
+				got = mode
+				return &FileDelegator{WriteFunc: func(p []byte) (int, error) { return len(p), nil }}, nil
+			}
+
+			src := fstest.MapFS{"a": {Data: []byte("x"), Mode: tc.perm}}
+			if err := CopyFS(dest, src, "."); err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("mode = %v; want %v", got, tc.want)
+			}
+		})
 	}
 }
