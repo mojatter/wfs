@@ -110,19 +110,21 @@ func Rename(fsys fs.FS, oldpath, newpath string) error {
 
 // CopyFS walks the specified root directory on src and copies directories and
 // files to dest filesystem.
+// Directories get fs.ModePerm and files 0o666 (before umask); source modes are not preserved.
 func CopyFS(dest, src fs.FS, root string) error {
 	return fs.WalkDir(src, root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d == nil {
 			return err
 		}
 		if d.IsDir() {
-			return MkdirAll(dest, path, d.Type())
+			return MkdirAll(dest, path, fs.ModePerm)
 		}
 		srcFile, err := src.Open(path)
 		if err != nil {
 			return err
 		}
-		// 0o666 before umask, as os.Create does; source modes are not preserved.
+		defer srcFile.Close()
+
 		destFile, err := CreateFile(dest, path, 0o666)
 		if err != nil {
 			return err
