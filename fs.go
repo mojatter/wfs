@@ -129,9 +129,10 @@ func CopyFS(dest, src fs.FS, root string) error {
 		if err != nil {
 			return err
 		}
-		defer destFile.Close()
-
 		_, err = io.Copy(destFile, srcFile)
+		if cerr := destFile.Close(); cerr != nil {
+			err = errors.Join(err, cerr)
+		}
 		return err
 	})
 }
