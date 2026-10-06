@@ -154,13 +154,12 @@ func (fsys *MemFS) Open(name string) (fs.File, error) {
 	}
 
 	f := &MemFile{
-		fsys:     fsys,
-		name:     name,
-		info:     v.snapshot(),
-		readOnly: true,
+		fsys: fsys,
+		name: name,
+		info: v.snapshot(),
 	}
 	if !v.isDir {
-		f.buf = bytes.NewBuffer(v.data)
+		f.r = bytes.NewReader(v.data)
 	}
 	return f, nil
 }
@@ -262,12 +261,14 @@ func (fsys *MemFS) CreateFile(name string, mode fs.FileMode) (wfs.WriterFile, er
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()
 
-	if _, err := fsys.create(name, mode); err != nil {
+	v, err := fsys.create(name, mode)
+	if err != nil {
 		return nil, err
 	}
 	return &MemFile{
 		fsys: fsys,
 		name: name,
+		info: v.snapshot(),
 		buf:  new(bytes.Buffer),
 		mode: mode,
 	}, nil
@@ -375,6 +376,8 @@ func (fsys *MemFS) RemoveAll(path string) error {
 // MemFile implements fs.File, fs.ReadDirFile, wfs.WriterFile and
 // wfs.SyncWriterFile. A file from Open is read-only and Write fails with
 // EBADF, as on osfs; only a file from CreateFile accepts writes.
+// Read on a file from CreateFile returns io.EOF, as on osfs.
+// Stat describes the entry as opened or created, sized to the bytes written.
 //
 // Write semantics differ from osfs and may surprise callers porting code
 // between backends:
@@ -389,19 +392,17 @@ func (fsys *MemFS) RemoveAll(path string) error {
 //     Close does.
 //   - Concurrent writers to the same name each operate on independent
 //     buffers; whichever calls Close last wins.
-//   - Stat on a file from Open describes the entry as opened, like fstat;
-//     on a file from CreateFile it looks the name up until Close.
 type MemFile struct {
 	fsys       *MemFS
 	name       string
-	buf        *bytes.Buffer
-	info       fs.FileInfo
+	r          *bytes.Reader // nil unless a regular file from Open
+	buf        *bytes.Buffer // nil unless from CreateFile
+	info       *value
 	mode       fs.FileMode
 	dirRead    bool
 	dirEntries []fs.DirEntry
 	dirIndex   int
 	wrote      bool
-	readOnly   bool
 }
 
 var (
@@ -413,18 +414,23 @@ var (
 
 // Read reads bytes from this file.
 func (f *MemFile) Read(p []byte) (int, error) {
-	if f.buf == nil {
-		return 0, &fs.PathError{Op: "Read", Path: f.name, Err: syscall.EISDIR}
+	switch {
+	case f.r != nil:
+		return f.r.Read(p)
+	case f.buf != nil:
+		return 0, io.EOF
 	}
-	return f.buf.Read(p)
+	return 0, &fs.PathError{Op: "Read", Path: f.name, Err: syscall.EISDIR}
 }
 
-// Stat returns the FileInfo taken at Open; files from CreateFile look the name up.
+// Stat returns the FileInfo taken at Open or CreateFile, sized to the bytes written.
 func (f *MemFile) Stat() (fs.FileInfo, error) {
-	if f.info == nil {
-		return f.fsys.Stat(f.name)
+	if f.buf == nil {
+		return f.info, nil
 	}
-	return f.info, nil
+	c := *f.info
+	c.data = f.buf.Bytes()
+	return &c, nil
 }
 
 // Close closes the file. If any Write calls were made, Close commits the
@@ -474,7 +480,7 @@ func (f *MemFile) ReadDir(n int) ([]fs.DirEntry, error) {
 // bytes are not published to the filesystem until Close is called. See
 // the MemFile type docs.
 func (f *MemFile) Write(p []byte) (int, error) {
-	if f.readOnly {
+	if f.buf == nil {
 		return 0, &fs.PathError{Op: "Write", Path: f.name, Err: syscall.EBADF}
 	}
 	f.wrote = true

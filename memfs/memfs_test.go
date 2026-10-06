@@ -1167,23 +1167,66 @@ func TestMemFile_StatDescribesOpenedFile(t *testing.T) {
 	}
 }
 
-func TestMemFile_StatOnCreatedFileLooksUpName(t *testing.T) {
-	fsys := New()
-	f, err := fsys.CreateFile("a.txt", fs.ModePerm)
-	if err != nil {
-		t.Fatal(err)
+func TestMemFile_CreatedFile(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		existing bool
+		change   func(fsys *MemFS) error
+	}{
+		{caseName: "new"},
+		{caseName: "existing", existing: true},
+		{
+			caseName: "removed",
+			change: func(fsys *MemFS) error {
+				return fsys.RemoveFile("a.txt")
+			},
+		},
 	}
-	defer f.Close()
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			fsys := New()
+			if tc.existing {
+				if _, err := fsys.WriteFile("a.txt", []byte("old content"), fs.ModePerm); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f, err := fsys.CreateFile("a.txt", fs.ModePerm)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.Write([]byte("hello")); err != nil {
+				t.Fatal(err)
+			}
+			if tc.change != nil {
+				if err := tc.change(fsys); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-	if _, err := fsys.WriteFile("a.txt", []byte("hello"), fs.ModePerm); err != nil {
-		t.Fatal(err)
-	}
-	info, err := f.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Size() != 5 {
-		t.Errorf("Size = %d; want 5", info.Size())
+			info, err := f.Stat()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Name() != "a.txt" || info.Size() != 5 {
+				t.Errorf("Stat = (%q, %d); want (%q, 5)", info.Name(), info.Size(), "a.txt")
+			}
+			if n, err := f.Read(make([]byte, 2)); n != 0 || err != io.EOF {
+				t.Errorf("Read = (%d, %v); want (0, EOF)", n, err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if tc.change != nil {
+				return
+			}
+			b, err := fsys.ReadFile("a.txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(b) != "hello" {
+				t.Errorf("a.txt = %q; want %q", b, "hello")
+			}
+		})
 	}
 }
 
