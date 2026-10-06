@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"testing/fstest"
@@ -404,5 +405,71 @@ func TestCopyFS_CloseError(t *testing.T) {
 				t.Error("Close not called")
 			}
 		})
+	}
+}
+
+func TestCopyFS_NonRegular(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		src      fstest.MapFS
+	}{
+		{caseName: "named pipe", src: fstest.MapFS{"a": {Mode: fs.ModeNamedPipe}}},
+		{caseName: "device", src: fstest.MapFS{"a": {Mode: fs.ModeDevice}}},
+		{caseName: "char device", src: fstest.MapFS{"a": {Mode: fs.ModeDevice | fs.ModeCharDevice}}},
+		{caseName: "socket", src: fstest.MapFS{"a": {Mode: fs.ModeSocket}}},
+		{caseName: "irregular", src: fstest.MapFS{"a": {Mode: fs.ModeIrregular}}},
+		{caseName: "symlink to dir", src: fstest.MapFS{"a": {Data: []byte("d"), Mode: fs.ModeSymlink}, "d/x": {Data: []byte("x")}}},
+		{caseName: "symlink to named pipe", src: fstest.MapFS{"a": {Data: []byte("p"), Mode: fs.ModeSymlink}, "p": {Mode: fs.ModeNamedPipe}}},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			created := false
+			dest := DelegateFS(fstest.MapFS{})
+			dest.CreateFileFunc = func(string, fs.FileMode) (WriterFile, error) {
+				created = true
+				return &FileDelegator{}, nil
+			}
+
+			err := CopyFS(dest, tc.src, ".")
+			var pathErr *fs.PathError
+			if !errors.As(err, &pathErr) || pathErr.Op != "CopyFS" || pathErr.Path != "a" || !errors.Is(err, fs.ErrInvalid) {
+				t.Errorf("CopyFS = %#v; want PathError{Op: CopyFS, Path: a, Err: ErrInvalid}", err)
+			}
+			if created {
+				t.Error("CreateFile called")
+			}
+		})
+	}
+}
+
+func TestCopyFS_Symlink(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "target.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("target.txt", filepath.Join(dir, "link")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+	got := map[string][]byte{}
+	dest := DelegateFS(fstest.MapFS{})
+	dest.CreateFileFunc = func(name string, mode fs.FileMode) (WriterFile, error) {
+		return &FileDelegator{WriteFunc: func(p []byte) (int, error) {
+			got[name] = append(got[name], p...)
+			return len(p), nil
+		}}, nil
+	}
+	if err := CopyFS(dest, os.DirFS(dir), "."); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]byte{"link": []byte("x"), "target.txt": []byte("x")}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("copied %v; want %v", got, want)
+	}
+
+	if err := os.Symlink("missing", filepath.Join(dir, "broken")); err != nil {
+		t.Fatal(err)
+	}
+	if err := CopyFS(dest, os.DirFS(dir), "."); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("CopyFS with broken symlink = %v; want ErrNotExist", err)
 	}
 }
