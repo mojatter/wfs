@@ -29,6 +29,7 @@ import (
 func TestWriteFileFS(fsys fs.FS, tmpDir string) error {
 	tests := []struct {
 		name    string
+		mode    fs.FileMode // fs.ModePerm when zero
 		wantErr bool
 	}{
 		{
@@ -46,12 +47,19 @@ func TestWriteFileFS(fsys fs.FS, tmpDir string) error {
 			wantErr: true,
 		}, {
 			name: "dir/file.txt", // update file.
+		}, {
+			name: "mode/sub/file.txt", // mkdir with a file mode lacking execute bits.
+			mode: 0o600,
 		},
 	}
 	for _, test := range tests {
 		name := tmpDir + "/" + test.name
+		mode := test.mode
+		if mode == 0 {
+			mode = fs.ModePerm
+		}
 
-		f, err := wfs.CreateFile(fsys, name, fs.ModePerm)
+		f, err := wfs.CreateFile(fsys, name, mode)
 		if test.wantErr {
 			if err == nil {
 				_ = f.Close()
@@ -70,8 +78,10 @@ func TestWriteFileFS(fsys fs.FS, tmpDir string) error {
 	if err := wfs.RemoveFile(fsys, tmpDir+"/file.txt"); err != nil {
 		return fmt.Errorf("%s: RemoveFile: %v", "file.txt", err)
 	}
-	if err := wfs.RemoveAll(fsys, tmpDir+"/dir"); err != nil {
-		return fmt.Errorf("%s: RemoveAll: %v", "dir", err)
+	for _, dir := range []string{"dir", "mode"} {
+		if err := wfs.RemoveAll(fsys, tmpDir+"/"+dir); err != nil {
+			return fmt.Errorf("%s: RemoveAll: %v", dir, err)
+		}
 	}
 	return nil
 }

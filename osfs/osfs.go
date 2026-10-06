@@ -30,10 +30,10 @@ func isInvalidPath(name string) bool {
 // Indirected through package vars so tests can swap them out. osfs is a
 // filesystem abstraction whose purpose is to operate on caller-supplied
 // paths joined under the configured root Dir, after isInvalidPath rejects
-// traversal-unsafe names — so the G304-style concern around os.Create is
+// traversal-unsafe names — so the G304-style concern around os.OpenFile is
 // intentional here.
 var (
-	osCreateFunc    = os.Create
+	osOpenFileFunc  = os.OpenFile
 	osMkdirAllFunc  = os.MkdirAll
 	osRemoveFunc    = os.Remove
 	osRemoveAllFunc = os.RemoveAll
@@ -119,17 +119,17 @@ func (fsys *OSFS) MkdirAll(dir string, mode fs.FileMode) error {
 	return osMkdirAllFunc(filepath.Join(fsys.Dir, dir), mode)
 }
 
-// CreateFile creates the named file.
+// CreateFile creates or truncates the named file with mode, and missing parents with fs.ModePerm.
 func (fsys *OSFS) CreateFile(name string, mode fs.FileMode) (wfs.WriterFile, error) {
 	if isInvalidPath(name) {
 		return nil, &fs.PathError{Op: "Create", Path: name, Err: fs.ErrInvalid}
 	}
 	path := filepath.Join(fsys.Dir, name)
-	err := osMkdirAllFunc(filepath.Dir(path), mode)
+	err := osMkdirAllFunc(filepath.Dir(path), fs.ModePerm)
 	if err != nil {
 		return nil, err
 	}
-	return osCreateFunc(path)
+	return osOpenFileFunc(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, mode)
 }
 
 // WriteFile writes the specified bytes to the named file.

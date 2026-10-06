@@ -261,6 +261,9 @@ func TestCopyFS(t *testing.T) {
 	got := map[string][]byte{}
 	dest := DelegateFS(os.DirFS(tmpDir))
 	dest.CreateFileFunc = func(name string, mode fs.FileMode) (WriterFile, error) {
+		if mode != 0o666 {
+			t.Errorf("%s: mode = %v; want %v", name, mode, fs.FileMode(0o666))
+		}
 		return &FileDelegator{
 			WriteFunc: func(p []byte) (int, error) {
 				got[name] = p
