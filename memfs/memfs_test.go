@@ -1186,3 +1186,50 @@ func TestMemFile_StatOnCreatedFileLooksUpName(t *testing.T) {
 		t.Errorf("Size = %d; want 5", info.Size())
 	}
 }
+
+func TestMemFile_WriteOnOpenedFile(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		name     string
+		read     bool
+	}{
+		{caseName: "file", name: "a.txt"},
+		{caseName: "file after read", name: "a.txt", read: true},
+		{caseName: "directory", name: "d"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			fsys := New()
+			if _, err := fsys.WriteFile("a.txt", []byte("hello"), fs.ModePerm); err != nil {
+				t.Fatal(err)
+			}
+			if err := fsys.MkdirAll("d", fs.ModePerm); err != nil {
+				t.Fatal(err)
+			}
+			f, err := fsys.Open(tc.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.read {
+				if _, err := io.ReadAll(f); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			n, err := f.(wfs.WriterFile).Write([]byte("XY"))
+			if n != 0 || !errors.Is(err, syscall.EBADF) {
+				t.Errorf("Write = (%d, %v); want (0, EBADF)", n, err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			b, err := fsys.ReadFile("a.txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(b) != "hello" {
+				t.Errorf("a.txt = %q; want %q", b, "hello")
+			}
+		})
+	}
+}
