@@ -157,6 +157,7 @@ func (fsys *MemFS) Open(name string) (fs.File, error) {
 		fsys: fsys,
 		name: name,
 		mode: v.mode,
+		info: v.snapshot(),
 	}
 	if !v.isDir {
 		f.buf = bytes.NewBuffer(v.data)
@@ -387,10 +388,13 @@ func (fsys *MemFS) RemoveAll(path string) error {
 //     Close does.
 //   - Concurrent writers to the same name each operate on independent
 //     buffers; whichever calls Close last wins.
+//   - Stat on a file from Open describes the entry as opened, like fstat;
+//     on a file from CreateFile it looks the name up until Close.
 type MemFile struct {
 	fsys       *MemFS
 	name       string
 	buf        *bytes.Buffer
+	info       fs.FileInfo
 	mode       fs.FileMode
 	dirRead    bool
 	dirEntries []fs.DirEntry
@@ -413,9 +417,12 @@ func (f *MemFile) Read(p []byte) (int, error) {
 	return f.buf.Read(p)
 }
 
-// Stat returns the fs.FileInfo of this file.
+// Stat returns the FileInfo taken at Open; files from CreateFile or written to look the name up.
 func (f *MemFile) Stat() (fs.FileInfo, error) {
-	return f.fsys.Stat(f.name)
+	if f.wrote || f.info == nil {
+		return f.fsys.Stat(f.name)
+	}
+	return f.info, nil
 }
 
 // Close closes the file. If any Write calls were made, Close commits the

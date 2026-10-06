@@ -1108,3 +1108,81 @@ func TestStatAndReadDirReturnSnapshots(t *testing.T) {
 		})
 	}
 }
+
+func TestMemFile_StatDescribesOpenedFile(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		change   func(fsys *MemFS) error
+	}{
+		{
+			caseName: "rewritten",
+			change: func(fsys *MemFS) error {
+				_, err := fsys.WriteFile("a.txt", []byte("replaced body"), fs.ModePerm)
+				return err
+			},
+		},
+		{
+			caseName: "renamed over",
+			change: func(fsys *MemFS) error {
+				if _, err := fsys.WriteFile("b.txt", []byte("replaced body"), fs.ModePerm); err != nil {
+					return err
+				}
+				return fsys.Rename("b.txt", "a.txt")
+			},
+		},
+		{
+			caseName: "removed",
+			change: func(fsys *MemFS) error {
+				return fsys.RemoveFile("a.txt")
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			fsys := New()
+			if _, err := fsys.WriteFile("a.txt", []byte("hello"), fs.ModePerm); err != nil {
+				t.Fatal(err)
+			}
+			f, err := fsys.Open("a.txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+
+			if err := tc.change(fsys); err != nil {
+				t.Fatal(err)
+			}
+			info, err := f.Stat()
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := io.ReadAll(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Name() != "a.txt" || info.Size() != 5 || string(b) != "hello" {
+				t.Errorf("Stat, Read = (%q, %d), %q; want (%q, 5), %q", info.Name(), info.Size(), b, "a.txt", "hello")
+			}
+		})
+	}
+}
+
+func TestMemFile_StatOnCreatedFileLooksUpName(t *testing.T) {
+	fsys := New()
+	f, err := fsys.CreateFile("a.txt", fs.ModePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	if _, err := fsys.WriteFile("a.txt", []byte("hello"), fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	info, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() != 5 {
+		t.Errorf("Size = %d; want 5", info.Size())
+	}
+}
