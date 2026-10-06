@@ -118,6 +118,49 @@ func TestCreateFile(t *testing.T) {
 	defer got.Close()
 }
 
+func TestCreateFile_Mode(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		existing fs.FileMode // mode of a file written first, if any
+		mode     fs.FileMode
+		want     fs.FileMode
+	}{
+		{caseName: "new file in missing parents", mode: 0o600, want: 0o600},
+		{caseName: "existing file keeps its mode", existing: 0o600, mode: 0o644, want: 0o600},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			fsys := New(t.TempDir())
+			name := "a/b/c.txt"
+			if tc.existing != 0 {
+				if _, err := fsys.WriteFile(name, []byte("old"), tc.existing); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := fsys.WriteFile(name, []byte("new"), tc.mode); err != nil {
+				t.Fatal(err)
+			}
+
+			info, err := fs.Stat(fsys, name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := info.Mode().Perm(); got != tc.want {
+				t.Errorf("file mode = %v; want %v", got, tc.want)
+			}
+			for _, dir := range []string{"a", "a/b"} {
+				info, err := fs.Stat(fsys, dir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !info.IsDir() || info.Mode().Perm()&0o700 != 0o700 {
+					t.Errorf("%s mode = %v; want a directory with owner rwx", dir, info.Mode())
+				}
+			}
+		})
+	}
+}
+
 func TestCreateFile_MkdirAllError(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {

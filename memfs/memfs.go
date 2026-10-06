@@ -128,7 +128,7 @@ func (fsys *MemFS) create(name string, mode fs.FileMode) (*value, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "Create", Path: name, Err: fs.ErrInvalid}
 	}
-	err := fsys.mkdirAll(path.Dir(name), mode)
+	err := fsys.mkdirAll(path.Dir(name), fs.ModePerm)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +256,7 @@ func (fsys *MemFS) MkdirAll(dir string, mode fs.FileMode) error {
 	return fsys.mkdirAll(dir, mode)
 }
 
-// CreateFile creates the named file.
+// CreateFile creates or truncates the named file with mode, and missing parents with fs.ModePerm.
 func (fsys *MemFS) CreateFile(name string, mode fs.FileMode) (wfs.WriterFile, error) {
 	fsys.mutex.Lock()
 	defer fsys.mutex.Unlock()

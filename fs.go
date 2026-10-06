@@ -119,7 +119,8 @@ func CopyFS(dest, src fs.FS, root string) error {
 		if err != nil {
 			return err
 		}
-		destFile, err := CreateFile(dest, path, d.Type())
+		// 0o666 before umask, as os.Create does; source modes are not preserved.
+		destFile, err := CreateFile(dest, path, 0o666)
 		if err != nil {
 			return err
 		}
