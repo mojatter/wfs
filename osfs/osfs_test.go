@@ -46,6 +46,19 @@ func TestRenameFS(t *testing.T) {
 	}
 }
 
+func TestFileHandle(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	fsys := New(filepath.Dir(tmpDir))
+	if err := wfstest.TestFileHandle(fsys, filepath.Base(tmpDir)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSyncWriterFile(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "test")
 	if err != nil {
