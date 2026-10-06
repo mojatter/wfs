@@ -27,6 +27,9 @@ type SyncWriterFile interface {
 
 // WriteFileFS is the interface implemented by a filesystem that provides an
 // optimized implementation of MkdirAll, CreateFile, WriteFile.
+// CreateFile and WriteFile create a file with mode (before umask) and missing
+// parents with fs.ModePerm; an existing file is truncated and keeps its mode.
+// Backends without POSIX modes may ignore mode.
 type WriteFileFS interface {
 	fs.FS
 	MkdirAll(dir string, mode fs.FileMode) error
