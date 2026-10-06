@@ -154,10 +154,10 @@ func (fsys *MemFS) Open(name string) (fs.File, error) {
 	}
 
 	f := &MemFile{
-		fsys: fsys,
-		name: name,
-		mode: v.mode,
-		info: v.snapshot(),
+		fsys:     fsys,
+		name:     name,
+		info:     v.snapshot(),
+		readOnly: true,
 	}
 	if !v.isDir {
 		f.buf = bytes.NewBuffer(v.data)
@@ -373,7 +373,8 @@ func (fsys *MemFS) RemoveAll(path string) error {
 
 // MemFile represents an in-memory file.
 // MemFile implements fs.File, fs.ReadDirFile, wfs.WriterFile and
-// wfs.SyncWriterFile.
+// wfs.SyncWriterFile. A file from Open is read-only and Write fails with
+// EBADF, as on osfs; only a file from CreateFile accepts writes.
 //
 // Write semantics differ from osfs and may surprise callers porting code
 // between backends:
@@ -400,6 +401,7 @@ type MemFile struct {
 	dirEntries []fs.DirEntry
 	dirIndex   int
 	wrote      bool
+	readOnly   bool
 }
 
 var (
@@ -417,9 +419,9 @@ func (f *MemFile) Read(p []byte) (int, error) {
 	return f.buf.Read(p)
 }
 
-// Stat returns the FileInfo taken at Open; files from CreateFile or written to look the name up.
+// Stat returns the FileInfo taken at Open; files from CreateFile look the name up.
 func (f *MemFile) Stat() (fs.FileInfo, error) {
-	if f.wrote || f.info == nil {
+	if f.info == nil {
 		return f.fsys.Stat(f.name)
 	}
 	return f.info, nil
@@ -472,6 +474,9 @@ func (f *MemFile) ReadDir(n int) ([]fs.DirEntry, error) {
 // bytes are not published to the filesystem until Close is called. See
 // the MemFile type docs.
 func (f *MemFile) Write(p []byte) (int, error) {
+	if f.readOnly {
+		return 0, &fs.PathError{Op: "Write", Path: f.name, Err: syscall.EBADF}
+	}
 	f.wrote = true
 	return f.buf.Write(p)
 }
