@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deprecated
+
+- `osfs.NewOSFS` is now scheduled for removal in v1.0.0 instead of
+  v0.8.0. Use `osfs.New` instead.
+
 ## [0.7.1]
 
 A memfs-only bugfix release. No public API changes.
