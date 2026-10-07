@@ -389,6 +389,8 @@ func (fsys *MemFS) RemoveAll(path string) error {
 //   - A file from Open reads and Stats the bytes as they were at Open, so
 //     later writes to the name, a CreateFile truncation included, do not
 //     reach it.
+//   - A file from CreateFile Stats the ModTime taken at CreateFile; Write
+//     does not move it, and a written file's Close stamps the stored entry.
 //   - A directory from Open lists the entries under its name at the first
 //     ReadDir, as s3fs and gcsfs do; osfs lists the directory it opened.
 //   - Sync is a no-op and does NOT publish the buffered bytes; only Close
