@@ -139,7 +139,7 @@ func TestCreateFile(t *testing.T) {
 
 	fsys := newMemFSTest(t)
 	for _, tc := range testCases {
-		_, err := fsys.CreateFile(tc.name, fs.ModePerm)
+		f, err := fsys.CreateFile(tc.name, fs.ModePerm)
 		errStr := ""
 		if err != nil {
 			errStr = err.Error()
@@ -150,12 +150,18 @@ func TestCreateFile(t *testing.T) {
 		if err != nil {
 			continue
 		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
 		info, err := fsys.Stat(tc.name)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if info.IsDir() {
 			t.Errorf(`Error %s IsDir() returns true; want false`, tc.name)
+		}
+		if info.Size() != 0 {
+			t.Errorf(`Error %s Size() returns %d; want 0`, tc.name, info.Size())
 		}
 	}
 }
