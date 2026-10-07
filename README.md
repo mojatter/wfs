@@ -103,17 +103,22 @@ func atomicWrite(fsys fs.FS, name string, src io.Reader) error {
 
 ## memfs limitations
 
-`memfs` is intended for tests and small in-process workflows. Its file
-handles behave as on `osfs` where `wfstest.TestFileHandle` checks them;
-the intentional differences — writes visible only after `Close`, the
-last written file's `Close` wins, a file from `Open` keeps the bytes it
-opened, and `Sync` is a no-op — are listed in the
-[`MemFile` docs](https://pkg.go.dev/github.com/mojatter/wfs/memfs#MemFile).
-In addition:
+`memfs` is intended for tests and small in-process workflows.
+`wfstest.TestFileHandle` checks the file-handle behavior it shares with
+`osfs`; its differences from `osfs`, also described in the
+[`MemFile`](https://pkg.go.dev/github.com/mojatter/wfs/memfs#MemFile) and
+[`MemFS.Rename`](https://pkg.go.dev/github.com/mojatter/wfs/memfs#MemFS.Rename)
+docs:
 
-- **`Rename` supports files only.** Renaming a directory currently
-  returns a `*fs.PathError`. `osfs.Rename` delegates to `os.Rename` and
-  therefore handles directories on POSIX systems.
+| | `osfs` | `memfs` |
+|---|---|---|
+| `Write` on a file from `CreateFile` | Seen by other readers at once | Seen by other readers only after `Close` |
+| Several files from `CreateFile` on one name | All write to the same file | The last written file's `Close` wins |
+| A file from `Open` after its name is written in place | Reads the new bytes | Keeps the bytes it opened |
+| `Stat().ModTime()` on a file from `CreateFile` | Moves on each `Write` | Stays at `CreateFile`; a written file's `Close` stamps the stored entry |
+| `ReadDir` on a directory from `Open` | Lists the directory it opened | Looks up the name at the first `ReadDir` |
+| `Sync` | Flushes to disk | No-op; does not publish the buffered bytes |
+| `Rename` of a directory | Supported | Returns a `*fs.PathError` |
 
 This is one of the solutions to an [issue](https://github.com/golang/go/issues/45757) of github.com/golango/go.
 
