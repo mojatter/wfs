@@ -30,6 +30,8 @@ type FSDelegator struct {
 	ReadFileFunc   func(name string) ([]byte, error)
 	GlobFunc       func(pattern string) ([]string, error)
 	StatFunc       func(name string) (fs.FileInfo, error)
+	LstatFunc      func(name string) (fs.FileInfo, error)
+	ReadLinkFunc   func(name string) (string, error)
 	SubFunc        func(dir string) (fs.FS, error)
 	MkdirAllFunc   func(dir string, mode fs.FileMode) error
 	CreateFileFunc func(name string, mode fs.FileMode) (WriterFile, error)
@@ -44,6 +46,7 @@ var (
 	_ fs.GlobFS     = (*FSDelegator)(nil)
 	_ fs.ReadDirFS  = (*FSDelegator)(nil)
 	_ fs.ReadFileFS = (*FSDelegator)(nil)
+	_ fs.ReadLinkFS = (*FSDelegator)(nil)
 	_ fs.StatFS     = (*FSDelegator)(nil)
 	_ fs.SubFS      = (*FSDelegator)(nil)
 	_ WriteFileFS   = (*FSDelegator)(nil)
@@ -89,6 +92,25 @@ func (d *FSDelegator) Stat(name string) (fs.FileInfo, error) {
 		return nil, &fs.PathError{Op: "Stat", Path: name, Err: ErrNotImplemented}
 	}
 	return d.StatFunc(name)
+}
+
+// Lstat calls LstatFunc(name), or StatFunc(name) if LstatFunc is nil, as fs.Lstat does without fs.ReadLinkFS.
+func (d *FSDelegator) Lstat(name string) (fs.FileInfo, error) {
+	if d.LstatFunc != nil {
+		return d.LstatFunc(name)
+	}
+	if d.StatFunc == nil {
+		return nil, &fs.PathError{Op: "Lstat", Path: name, Err: ErrNotImplemented}
+	}
+	return d.StatFunc(name)
+}
+
+// ReadLink calls ReadLinkFunc(name).
+func (d *FSDelegator) ReadLink(name string) (string, error) {
+	if d.ReadLinkFunc == nil {
+		return "", &fs.PathError{Op: "ReadLink", Path: name, Err: ErrNotImplemented}
+	}
+	return d.ReadLinkFunc(name)
 }
 
 // Sub calls SubFunc(name).
@@ -181,6 +203,10 @@ func DelegateFS(fsys fs.FS) *FSDelegator {
 		d.StatFunc = func(name string) (fs.FileInfo, error) {
 			return fs.Stat(fsys, name)
 		}
+	}
+	if casted, ok := fsys.(fs.ReadLinkFS); ok {
+		d.LstatFunc = casted.Lstat
+		d.ReadLinkFunc = casted.ReadLink
 	}
 	if casted, ok := fsys.(fs.SubFS); ok {
 		d.SubFunc = casted.Sub
