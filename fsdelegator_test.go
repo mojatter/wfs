@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"testing/fstest"
@@ -49,6 +50,12 @@ func testFSDelegatorErrors(t *testing.T, d *FSDelegator, wantErr error) {
 	if _, err = d.Stat(""); !errors.Is(err, wantErr) {
 		t.Errorf("unexpected %v", err)
 	}
+	if _, err = d.Lstat(""); !errors.Is(err, wantErr) {
+		t.Errorf("unexpected %v", err)
+	}
+	if _, err = d.ReadLink(""); !errors.Is(err, wantErr) {
+		t.Errorf("unexpected %v", err)
+	}
 	if _, err = d.Sub(""); !errors.Is(err, wantErr) {
 		t.Errorf("unexpected %v", err)
 	}
@@ -91,6 +98,12 @@ func TestFSDelegator(t *testing.T) {
 		},
 		StatFunc: func(_ string) (fs.FileInfo, error) {
 			return nil, wantErr
+		},
+		LstatFunc: func(_ string) (fs.FileInfo, error) {
+			return nil, wantErr
+		},
+		ReadLinkFunc: func(_ string) (string, error) {
+			return "", wantErr
 		},
 		SubFunc: func(_ string) (fs.FS, error) {
 			return nil, wantErr
@@ -182,6 +195,92 @@ func TestDelegateFS_Stat(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("unexpected %v; want %v", got, want)
+	}
+}
+
+func TestFSDelegator_Lstat(t *testing.T) {
+	lstatInfo, statInfo := &FileInfoDelegator{}, &FileInfoDelegator{}
+	lstatFunc := func(_ string) (fs.FileInfo, error) {
+		return lstatInfo, nil
+	}
+	statFunc := func(_ string) (fs.FileInfo, error) {
+		return statInfo, nil
+	}
+	testCases := []struct {
+		caseName string
+		d        *FSDelegator
+		want     fs.FileInfo
+		wantErr  bool
+	}{
+		{caseName: "LstatFunc", d: &FSDelegator{LstatFunc: lstatFunc}, want: lstatInfo},
+		{caseName: "LstatFunc over StatFunc", d: &FSDelegator{LstatFunc: lstatFunc, StatFunc: statFunc}, want: lstatInfo},
+		{caseName: "StatFunc fallback", d: &FSDelegator{StatFunc: statFunc}, want: statInfo},
+		{caseName: "no funcs", d: &FSDelegator{}, wantErr: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := fs.Lstat(tc.d, "name")
+			if tc.wantErr {
+				var pathErr *fs.PathError
+				if !errors.Is(err, ErrNotImplemented) || !errors.As(err, &pathErr) || pathErr.Op != "Lstat" {
+					t.Errorf("unexpected %#v; want *fs.PathError{Op: Lstat} with %v", err, ErrNotImplemented)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("unexpected %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDelegateFS_ReadLinkFS(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "target.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("target.txt", filepath.Join(dir, "link")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+
+	testCases := []struct {
+		caseName   string
+		fsys       fs.FS
+		wantLink   bool
+		wantTarget string
+	}{
+		{caseName: "ReadLinkFS", fsys: os.DirFS(dir), wantLink: true, wantTarget: "target.txt"},
+		{caseName: "without ReadLinkFS", fsys: DelegateOpenFS(os.DirFS(dir))},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			d := DelegateFS(tc.fsys)
+			if got := d.LstatFunc != nil && d.ReadLinkFunc != nil; got != tc.wantLink {
+				t.Errorf("funcs set got %v; want %v", got, tc.wantLink)
+			}
+
+			info, err := fs.Lstat(d, "link")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := info.Mode()&fs.ModeSymlink != 0; got != tc.wantLink {
+				t.Errorf("Lstat symlink got %v; want %v", got, tc.wantLink)
+			}
+			target, err := fs.ReadLink(d, "link")
+			if tc.wantLink {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if target != tc.wantTarget {
+					t.Errorf("ReadLink got %q; want %q", target, tc.wantTarget)
+				}
+			} else if !errors.Is(err, ErrNotImplemented) {
+				t.Errorf("ReadLink error got %v; want %v", err, ErrNotImplemented)
+			}
+		})
 	}
 }
 

@@ -52,6 +52,7 @@ var (
 	_ fs.GlobFS        = (*OSFS)(nil)
 	_ fs.ReadDirFS     = (*OSFS)(nil)
 	_ fs.ReadFileFS    = (*OSFS)(nil)
+	_ fs.ReadLinkFS    = (*OSFS)(nil)
 	_ fs.StatFS        = (*OSFS)(nil)
 	_ fs.SubFS         = (*OSFS)(nil)
 	_ wfs.WriteFileFS  = (*OSFS)(nil)
@@ -103,13 +104,30 @@ func (fsys *OSFS) Stat(name string) (fs.FileInfo, error) {
 	return fsys.osFS.Stat(name)
 }
 
+// Lstat returns a FileInfo describing the named file without following symlinks.
+func (fsys *OSFS) Lstat(name string) (fs.FileInfo, error) {
+	return fsys.osFS.Lstat(name)
+}
+
+// ReadLink returns the destination of the named symbolic link as stored,
+// which may be absolute or lead outside the tree.
+func (fsys *OSFS) ReadLink(name string) (string, error) {
+	target, err := fsys.osFS.ReadLink(name)
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		// os.DirFS before Go 1.27 leaves the full OS path in the error.
+		pathErr.Path = name
+	}
+	return target, err
+}
+
 // Sub returns an FS corresponding to the subtree rooted at dir.
 // dir need not exist; writes create it.
 func (fsys *OSFS) Sub(dir string) (fs.FS, error) {
 	if isInvalidPath(dir) {
 		return nil, &fs.PathError{Op: "Sub", Path: dir, Err: fs.ErrInvalid}
 	}
-	return NewOSFS(filepath.Join(fsys.Dir, dir)), nil
+	return New(filepath.Join(fsys.Dir, dir)), nil
 }
 
 // MkdirAll creates the named directory.

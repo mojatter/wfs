@@ -4,8 +4,10 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 	"testing/fstest"
 
@@ -419,5 +421,144 @@ func TestRemoveAll_InvalidError(t *testing.T) {
 	err = wfs.RemoveAll(fsys, "../invalid-dir")
 	if err == nil {
 		t.Fatal("no error")
+	}
+}
+
+func TestReadLinkFS(t *testing.T) {
+	tmpDir := t.TempDir()
+	subDir := filepath.Join(tmpDir, "sub")
+	if err := os.MkdirAll(filepath.Join(subDir, "dir"), fs.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"target.txt", "dir/inner.txt"} {
+		if err := os.WriteFile(filepath.Join(subDir, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("target.txt", filepath.Join(subDir, "file-link")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+	if err := os.Symlink("dir", filepath.Join(subDir, "dir-link")); err != nil {
+		t.Fatal(err)
+	}
+	absTarget := filepath.Join(subDir, "target.txt")
+	if err := os.Symlink(absTarget, filepath.Join(subDir, "abs-link")); err != nil {
+		t.Fatal(err)
+	}
+
+	root := New(tmpDir)
+	// fstest.TestFS opens every entry, so it runs before the dangling link exists.
+	if err := fstest.TestFS(root, "sub/file-link", "sub/dir-link"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("missing", filepath.Join(subDir, "dangling")); err != nil {
+		t.Fatal(err)
+	}
+	sub, err := root.Sub("sub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testCases := []struct {
+		caseName   string
+		fsys       fs.FS
+		name       string
+		wantLink   bool
+		wantTarget string
+		wantDir    bool
+		wantErr    error
+	}{
+		{caseName: "link to file", fsys: root, name: "sub/file-link", wantLink: true, wantTarget: "target.txt"},
+		{caseName: "link to directory", fsys: root, name: "sub/dir-link", wantLink: true, wantTarget: "dir", wantDir: true},
+		{caseName: "dangling link", fsys: root, name: "sub/dangling", wantLink: true, wantTarget: "missing", wantErr: fs.ErrNotExist},
+		{caseName: "absolute link", fsys: root, name: "sub/abs-link", wantLink: true, wantTarget: absTarget},
+		{caseName: "regular file", fsys: root, name: "sub/target.txt"},
+		{caseName: "file via directory link", fsys: root, name: "sub/dir-link/inner.txt"},
+		{caseName: "directory", fsys: root, name: "sub/dir", wantDir: true},
+		{caseName: "root", fsys: root, name: ".", wantDir: true},
+		{caseName: "link to file via Sub", fsys: sub, name: "file-link", wantLink: true, wantTarget: "target.txt"},
+		{caseName: "link to directory via Sub", fsys: sub, name: "dir-link", wantLink: true, wantTarget: "dir", wantDir: true},
+		{caseName: "dangling link via Sub", fsys: sub, name: "dangling", wantLink: true, wantTarget: "missing", wantErr: fs.ErrNotExist},
+		{caseName: "regular file via Sub", fsys: sub, name: "target.txt"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			info, err := fs.Lstat(tc.fsys, tc.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := info.Mode()&fs.ModeSymlink != 0; got != tc.wantLink {
+				t.Errorf("Lstat(%q) symlink got %v; want %v", tc.name, got, tc.wantLink)
+			}
+			if want := path.Base(tc.name); info.Name() != want {
+				t.Errorf("Lstat(%q) name got %q; want %q", tc.name, info.Name(), want)
+			}
+
+			target, err := fs.ReadLink(tc.fsys, tc.name)
+			if tc.wantLink {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if target != tc.wantTarget {
+					t.Errorf("ReadLink(%q) got %q; want %q", tc.name, target, tc.wantTarget)
+				}
+			} else {
+				var pathErr *fs.PathError
+				if !errors.As(err, &pathErr) || pathErr.Path != tc.name {
+					t.Errorf("ReadLink(%q) error got %#v; want *fs.PathError for %q", tc.name, err, tc.name)
+				}
+			}
+
+			info, err = fs.Stat(tc.fsys, tc.name)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Errorf("Stat(%q) error got %v; want %v", tc.name, err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Mode()&fs.ModeSymlink != 0 {
+				t.Errorf("Stat(%q) did not follow the link", tc.name)
+			}
+			if info.IsDir() != tc.wantDir {
+				t.Errorf("Stat(%q) IsDir got %v; want %v", tc.name, info.IsDir(), tc.wantDir)
+			}
+		})
+	}
+}
+
+func TestReadLinkFS_Error(t *testing.T) {
+	testCases := []struct {
+		caseName    string
+		name        string
+		wantErr     error
+		windowsOnly bool
+	}{
+		{caseName: "missing", name: "missing", wantErr: fs.ErrNotExist},
+		{caseName: "escapes the root", name: "../outside", wantErr: fs.ErrInvalid},
+		{caseName: "absolute path", name: "/absolute", wantErr: fs.ErrInvalid},
+		{caseName: "empty path", name: "", wantErr: fs.ErrInvalid},
+		{caseName: "backslash", name: `a\b`, wantErr: fs.ErrInvalid, windowsOnly: true},
+		{caseName: "colon", name: "c:x", wantErr: fs.ErrInvalid, windowsOnly: true},
+	}
+
+	fsys := New("testdata")
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if tc.windowsOnly && runtime.GOOS != "windows" {
+				t.Skip("valid name outside windows")
+			}
+			var pathErr *fs.PathError
+
+			_, err := fsys.Lstat(tc.name)
+			if !errors.Is(err, tc.wantErr) || !errors.As(err, &pathErr) || pathErr.Path != tc.name {
+				t.Errorf("Lstat(%q) error got %#v; want *fs.PathError for %q with %v", tc.name, err, tc.name, tc.wantErr)
+			}
+			_, err = fsys.ReadLink(tc.name)
+			if !errors.Is(err, tc.wantErr) || !errors.As(err, &pathErr) || pathErr.Path != tc.name {
+				t.Errorf("ReadLink(%q) error got %#v; want *fs.PathError for %q with %v", tc.name, err, tc.name, tc.wantErr)
+			}
+		})
 	}
 }
