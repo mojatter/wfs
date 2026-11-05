@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- osfs: `OSFS` implements `fs.ReadLinkFS`, so `fs.Lstat` describes a
+  symlink itself instead of following it, and `fs.ReadLink` returns its
+  target. Invalid names fail with `fs.ErrInvalid` as in the other
+  methods, and `os.CopyFS` from an osfs source now recreates symlinks
+  (#70).
+- `FSDelegator` implements `fs.ReadLinkFS` through `LstatFunc` and
+  `ReadLinkFunc`, which `DelegateFS` fills when the wrapped filesystem
+  implements it. A nil `LstatFunc` falls back to `Stat`, as `fs.Lstat`
+  and `fs.Sub` do for filesystems without it, so delegators over
+  filesystems without symlinks keep `fs.Lstat` equal to `Stat` (#70).
+
+### Changed
+
+- Minimum Go version is now 1.25 (was 1.24), the release that added
+  `fs.ReadLinkFS` (#70).
+- `fs.ReadLink` on an `FSDelegator` with a nil `ReadLinkFunc`, including
+  one from `DelegateFS` over a filesystem without `fs.ReadLinkFS`, now
+  fails with `ErrNotImplemented` instead of `fs.ErrInvalid` (#70).
+
 ## [0.8.0]
 
 A behavior-convergence release for open files and file modes. osfs
