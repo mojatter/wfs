@@ -7,13 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0]
+
+A symlink-awareness release. osfs implements `fs.ReadLinkFS`, so
+`fs.Lstat` on osfs now describes a symlink instead of following it,
+`fs.ReadLink` returns its target and `os.CopyFS` from an osfs source
+recreates symlinks. `FSDelegator` and `DelegateFS` forward both methods
+from filesystems that have them, `os.DirFS` included, so `fs.Lstat`
+changes there too. The minimum Go version rises to 1.25. One visible
+behavior change, a higher Go floor and one error change — read Changed
+before upgrading.
+
 ### Added
 
-- osfs: `OSFS` implements `fs.ReadLinkFS`, so `fs.Lstat` describes a
-  symlink itself instead of following it, and `fs.ReadLink` returns its
-  target. Invalid names fail with `fs.ErrInvalid` as in the other
-  methods, and `os.CopyFS` from an osfs source now recreates symlinks
-  (#70).
+- osfs: `OSFS` implements `fs.ReadLinkFS`. `fs.ReadLink` returns the
+  target as stored, which may be absolute or lead outside the tree;
+  invalid names fail with `fs.ErrInvalid` as in the other methods.
+  `os.CopyFS` from an osfs source now recreates symlinks with those
+  targets where it failed with `fs.ErrInvalid`; this module's `CopyFS`
+  still resolves them with `fs.Stat` (#70).
 - `FSDelegator` implements `fs.ReadLinkFS` through `LstatFunc` and
   `ReadLinkFunc`, which `DelegateFS` fills when the wrapped filesystem
   implements it. A nil `LstatFunc` falls back to `Stat`, as `fs.Lstat`
@@ -22,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- osfs, and `DelegateFS` over a filesystem with `fs.ReadLinkFS` such as
+  `os.DirFS`: `fs.Lstat` now describes the symlink itself, so for a link
+  to a directory `IsDir` is false and `Mode` has `fs.ModeSymlink`. It
+  used to fall back to `Stat` and describe the target; code that wants
+  the target's info should call `fs.Stat` (#70).
 - Minimum Go version is now 1.25 (was 1.24), the release that added
   `fs.ReadLinkFS` (#70).
 - `fs.ReadLink` on an `FSDelegator` with a nil `ReadLinkFunc`, including
@@ -314,7 +331,8 @@ in v0.4.1 and are now properly documented.
 
 See the git log.
 
-[Unreleased]: https://github.com/mojatter/wfs/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/mojatter/wfs/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/mojatter/wfs/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/mojatter/wfs/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/mojatter/wfs/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/mojatter/wfs/compare/v0.6.0...v0.7.0
